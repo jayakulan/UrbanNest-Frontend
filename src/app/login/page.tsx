@@ -3,12 +3,10 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAuth, UserRole } from "@/context/AuthContext";
 import { Mail, Lock, Eye, HelpCircle } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
   
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,22 +17,39 @@ export default function LoginPage() {
     e.preventDefault();
     setIsLoading(true);
 
-    // Mock Login Simulation
-    setTimeout(() => {
-      let role: UserRole = "Tenant";
-      if (email.includes("owner")) role = "Owner";
-      if (email.includes("admin")) role = "Admin";
-      
-      login("mock-jwt-token-xyz-123", {
-        id: "usr-" + Math.floor(Math.random() * 1000),
-        name: "Test User",
-        email,
-        role: role
+    try {
+      const response = await fetch("http://127.0.0.1:8080/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
       });
-      
-      router.push(`/dashboard/${role.toLowerCase()}`);
+
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+
+      if (response.ok && data.token) {
+        // Store JWT + user info
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("role", data.role);
+        localStorage.setItem("email", data.email);
+
+        // Redirect based on role
+        if (data.role === "ADMIN") {
+          router.push("/admin/dashboard");
+        } else if (data.role === "OWNER") {
+          router.push("/owner");
+        } else {
+          router.push("/");
+        }
+      } else {
+        alert(data.message || `Login failed (${response.status})`);
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Could not connect to server. Please try again.");
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (

@@ -2,12 +2,18 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { Menu, X, User, LogOut } from "lucide-react";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const pathname = usePathname();
+
+  if (pathname?.startsWith("/owner")) {
+    return null;
+  }
 
   return (
     <nav className="bg-white sticky top-0 z-50 shadow-sm border-b border-gray-100">

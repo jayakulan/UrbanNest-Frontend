@@ -11,9 +11,9 @@ export default function SignupPage() {
   const router = useRouter();
 
   const [role, setRole] = useState("tenant"); // tenant or owner
-  const [name, setName] = useState("");
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phoneNo, setPhoneNo] = useState("");
   const [address, setAddress] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -45,10 +45,39 @@ export default function SignupPage() {
     if (hasError) return;
 
     setIsLoading(true);
-    setTimeout(() => {
-      router.push("/login");
+    try {
+      const userData = {
+        fullName,
+        email,
+        phoneNo,
+        address,
+        password,
+        role: role.toUpperCase() // Automatically uppercase for Spring Boot ENUM compatibility, while keeping the key 'role'
+      };
+
+      const response = await fetch("http://127.0.0.1:8080/api/auth/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(userData)
+      });
+
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+      console.log(data);
+
+      if (response.ok) {
+        router.push("/login");
+      } else {
+        setPasswordError(data.message || `Signup failed (${response.status}). Please try again.`);
+      }
+    } catch (error) {
+      console.error(error);
+      setPasswordError("An error occurred during signup. Please try again later.");
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   return (
@@ -134,8 +163,8 @@ export default function SignupPage() {
                   required
                   className="block w-full pl-10 pr-3 py-3.5 bg-[#f1f3f5] border-transparent rounded-lg text-gray-900 text-sm focus:bg-white focus:border-gray-300 focus:ring-1 focus:ring-gray-300 transition-colors placeholder-gray-400 font-medium"
                   placeholder="John Doe"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
                 />
               </div>
             </div>
@@ -176,8 +205,8 @@ export default function SignupPage() {
                     required
                     className="block w-full pl-10 pr-3 py-3.5 bg-[#f1f3f5] border-transparent rounded-lg text-gray-900 text-sm focus:bg-white focus:border-gray-300 focus:ring-1 focus:ring-gray-300 transition-colors placeholder-gray-400 font-medium"
                     placeholder="+1 (555) 000"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    value={phoneNo}
+                    onChange={(e) => setPhoneNo(e.target.value)}
                   />
                 </div>
               </div>
