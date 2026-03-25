@@ -11,7 +11,7 @@ export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const pathname = usePathname();
 
-  if (pathname?.startsWith("/owner")) {
+  if (pathname?.startsWith("/owner") || pathname?.startsWith("/tenant") || pathname?.startsWith("/admin")) {
     return null;
   }
 

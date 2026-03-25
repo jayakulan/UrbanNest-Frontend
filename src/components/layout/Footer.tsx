@@ -8,7 +8,7 @@ import { Facebook, Twitter, Instagram, ArrowRight, ArrowRightCircle } from "luci
 export default function Footer() {
   const pathname = usePathname();
 
-  if (pathname?.startsWith("/owner")) {
+  if (pathname?.startsWith("/owner") || pathname?.startsWith("/tenant") || pathname?.startsWith("/admin")) {
     return null;
   }
 
