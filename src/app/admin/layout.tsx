@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -22,6 +22,15 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const role = localStorage.getItem("role");
+    if (!token || role !== "ADMIN") {
+      router.push("/login");
+    }
+  }, [router]);
 
   const navLinks: { name: string, href: string, icon: any, badge?: string }[] = [
     { name: "Dashboard", href: "/admin", icon: LayoutDashboard },

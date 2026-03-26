@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Building,
@@ -24,6 +24,40 @@ export default function OwnerDashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [userName, setUserName] = useState("Loading...");
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const userId = localStorage.getItem("userId");
+        const role = localStorage.getItem("role");
+        
+        if (!token || !userId || role !== "OWNER") {
+          router.push("/login");
+          return;
+        }
+
+        const res = await fetch(`http://localhost:8080/api/users/${userId}`, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+          }
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          setUserName(data.name || data.fullName || data.email || "Owner Profile");
+        } else {
+          setUserName("Owner Profile");
+        }
+      } catch (err) {
+        setUserName("Owner Profile");
+      }
+    };
+    fetchUser();
+  }, []);
 
   return (
     <div className="flex min-h-screen bg-[#f8fafc] text-slate-800 font-sans">
@@ -77,12 +111,12 @@ export default function OwnerDashboardLayout({
 
           <Link href="/owner/profile" className="flex items-center gap-3 px-2 cursor-pointer hover:bg-slate-50 transition-colors p-2 rounded-xl">
             <img
-              src="https://i.pravatar.cc/150?u=julian"
-              alt="Julian Thorne"
-              className="w-10 h-10 rounded-full bg-slate-200"
+              src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&q=80"
+              alt={userName}
+              className="w-10 h-10 rounded-full bg-slate-200 object-cover"
             />
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-slate-900">Julian Thorne</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-slate-900 truncate">{userName}</p>
               <p className="text-xs text-slate-500">View Profile</p>
             </div>
             <button className="text-slate-400 hover:text-slate-600">
@@ -139,11 +173,11 @@ export default function OwnerDashboardLayout({
             </div>
 
             <div className="flex items-center gap-3 pl-6 border-l border-slate-200">
-              <span className="text-sm font-semibold text-slate-900">Owner Portal</span>
+              <span className="text-sm font-semibold text-slate-900 truncate max-w-[150px]">{userName}</span>
               <img
-                src="https://i.pravatar.cc/150?u=julian"
-                alt="Profile"
-                className="w-8 h-8 rounded-full ring-2 ring-white border border-slate-200"
+                src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&q=80"
+                alt={userName}
+                className="w-8 h-8 rounded-full ring-2 ring-white border border-slate-200 object-cover"
               />
             </div>
           </div>

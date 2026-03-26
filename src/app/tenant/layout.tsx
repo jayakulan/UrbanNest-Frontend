@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Building,
@@ -20,6 +20,15 @@ export default function TenantDashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const role = localStorage.getItem("role");
+    if (!token || role !== "TENANT") {
+      router.push("/login");
+    }
+  }, [router]);
 
   // Define explicitly with an optional badge to keep TS happy
   const mainLinks: Array<{ name: string; href: string; icon: any; badge?: string }> = [
