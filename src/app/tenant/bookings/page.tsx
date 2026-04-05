@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   MapPin, 
   CalendarDays, 
@@ -14,73 +14,65 @@ import Link from "next/link";
 
 export default function TenantBookingsPage() {
   const [activeTab, setActiveTab] = useState("All Bookings");
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const tabs = ["All Bookings", "Pending", "Approved", "Completed", "Rejected"];
 
-  const bookings = [
-    {
-      id: 1,
-      title: "Azure Sky Penthouse",
-      location: "Upper East Side, Manhattan",
-      image: "https://images.unsplash.com/photo-1600607687931-cece5ce21408?w=500&q=80",
-      status: "CONFIRMED",
-      statusStyle: "bg-[#0b0f19] text-white",
-      price: "$12,500",
-      priceSubtext: "SECURITY DEPOSIT PAID",
-      meta1Label: "CHECK-IN",
-      meta1Value: "June 15, 2024",
-      meta1Icon: <CalendarDays size={16} />,
-      meta2Label: "DURATION",
-      meta2Value: "12 Months (Fixed)",
-      meta2Icon: <Clock size={16} />,
-      tags: ["3 BEDROOMS", "POOL ACCESS"],
-      actions: [
-        { label: "Contact Owner", style: "text-slate-900 font-bold text-sm bg-transparent hover:underline" },
-        { label: "View Details", style: "bg-[#0b0f19] text-white shadow-md hover:bg-slate-800" }
-      ]
-    },
-    {
-      id: 2,
-      title: "The Obsidian Suite",
-      location: "SoHo, Manhattan",
-      image: "https://images.unsplash.com/photo-1600566753376-12c8ab7fb75b?w=500&q=80",
-      status: "PENDING REVIEW",
-      statusStyle: "bg-white/80 backdrop-blur-md text-slate-800",
-      price: "$8,900",
-      priceSubtext: "",
-      meta1Label: "REQUESTED START",
-      meta1Value: "August 01, 2024",
-      meta1Icon: <CalendarDays size={16} />,
-      meta2Label: "STATUS UPDATE",
-      meta2Value: "Awaiting Approval",
-      meta2Icon: <Clock size={16} />,
-      tags: ["STUDIO LOFT", "CONCIERGE"],
-      actions: [
-        { label: "Withdraw Request", style: "text-slate-900 font-bold text-sm bg-transparent hover:underline" },
-        { label: "Details", style: "bg-slate-200 text-slate-800 hover:bg-slate-300" }
-      ]
-    },
-    {
-      id: 3,
-      title: "The Glass Pavilion",
-      location: "Scarsdale, NY",
-      image: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=500&q=80",
-      status: "COMPLETED",
-      statusStyle: "bg-white/90 backdrop-blur-md text-slate-800",
-      price: "$15,200",
-      priceSubtext: "",
-      meta1Label: "TENANCY END",
-      meta1Value: "May 30, 2024",
-      meta1Icon: <CalendarDays size={16} />,
-      meta2Label: "REVIEW",
-      meta2Value: "5 stars",
-      meta2Icon: null,
-      tags: ["ESTATE", "PRIVATE FOREST"],
-      actions: [
-        { label: "Re-book Space", style: "bg-[#333b4d] text-white hover:bg-[#1a1f2b] shadow-sm" }
-      ]
-    }
-  ];
+  useEffect(() => {
+    const fetchBookings = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const userId = localStorage.getItem("userId");
+        if (!userId) return;
+
+        // Fetch all bookings for this tenant
+        const res = await fetch(`http://localhost:8080/api/bookings/tenant/${userId}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+
+        if (res.ok) {
+          const data: any[] = await res.json();
+
+          // Enrich each booking with property details
+          const enriched = await Promise.all(
+            data.map(async (b: any) => {
+              try {
+                const pRes = await fetch(`http://localhost:8080/api/properties/${b.propertyId}`);
+                const prop = pRes.ok ? await pRes.json() : null;
+                return { ...b, property: prop };
+              } catch {
+                return { ...b, property: null };
+              }
+            })
+          );
+          setBookings(enriched);
+        }
+      } catch (err) {
+        console.error("Failed to fetch bookings", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchBookings();
+  }, []);
+
+  const getStatusStyle = (status: string) => {
+    const s = (status || "").toUpperCase();
+    if (s === "APPROVED" || s === "CONFIRMED") return "bg-[#0b0f19] text-white";
+    if (s === "PENDING") return "bg-white/80 backdrop-blur-md text-slate-800";
+    if (s === "COMPLETED") return "bg-white/90 backdrop-blur-md text-slate-800";
+    if (s === "REJECTED") return "bg-red-100 text-red-700";
+    return "bg-white/80 text-slate-800";
+  };
+
+  const filteredBookings = activeTab === "All Bookings"
+    ? bookings
+    : bookings.filter(b => (b.status || "").toUpperCase() === activeTab.toUpperCase());
+
+  // Summary stats
+  const nextBooking = bookings.find(b => b.status?.toUpperCase() === "PENDING" || b.status?.toUpperCase() === "APPROVED");
+  const totalInvestment = bookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
 
   return (
     <div className="max-w-[1200px] mx-auto px-8 py-8 font-sans pb-32">
@@ -98,10 +90,16 @@ export default function TenantBookingsPage() {
         <div className="flex-1 bg-[#0b0f19] rounded-3xl p-8 text-white relative overflow-hidden shadow-lg flex flex-col justify-between">
           <div>
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-3">Next Move-In</span>
-            <h2 className="text-3xl font-bold tracking-tight mb-2">Azure Sky Penthouse</h2>
+            <h2 className="text-3xl font-bold tracking-tight mb-2">
+              {nextBooking?.property?.title || "No Upcoming Booking"}
+            </h2>
             <div className="flex items-center gap-1.5 text-slate-300 mb-8 font-medium text-sm">
               <MapPin size={16} />
-              <span>Upper East Side, Manhattan</span>
+              <span>
+                {nextBooking?.property
+                  ? `${nextBooking.property.city || ""}, ${nextBooking.property.district || ""}`.trim().replace(/^,|,$/, "") || nextBooking.property.address
+                  : "—"}
+              </span>
             </div>
           </div>
 
@@ -109,11 +107,11 @@ export default function TenantBookingsPage() {
             <div className="flex gap-12">
               <div>
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Date</span>
-                <span className="text-lg font-bold">June 15, 2024</span>
+                <span className="text-lg font-bold">{nextBooking?.moveInDate || "—"}</span>
               </div>
               <div>
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Status</span>
-                <span className="text-lg font-bold">Confirmed</span>
+                <span className="text-lg font-bold capitalize">{nextBooking?.status || "—"}</span>
               </div>
             </div>
             
@@ -132,8 +130,10 @@ export default function TenantBookingsPage() {
             <Banknote size={20} />
           </div>
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Total Investment</span>
-          <h2 className="text-4xl font-black text-slate-900 tracking-tight mb-2">$42,800</h2>
-          <p className="text-[10px] italic font-semibold text-slate-400">Last 12 months active bookings</p>
+          <h2 className="text-4xl font-black text-slate-900 tracking-tight mb-2">
+            ${totalInvestment.toLocaleString()}
+          </h2>
+          <p className="text-[10px] italic font-semibold text-slate-400">All active bookings</p>
         </div>
 
       </div>
@@ -171,116 +171,101 @@ export default function TenantBookingsPage() {
 
       {/* Bookings List */}
       <div className="space-y-6">
-        {bookings.map((booking) => (
-          <div key={booking.id} className="bg-white rounded-3xl p-3 border border-slate-100 shadow-sm flex flex-col md:flex-row gap-6 hover:shadow-md transition-shadow">
-            
-            {/* Image Box */}
-            <div className="w-full md:w-80 h-64 md:h-auto rounded-2xl overflow-hidden relative shrink-0">
-              <img 
-                src={booking.image} 
-                alt={booking.title} 
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute top-4 left-4">
-                <span className={`px-3 py-1 text-[9px] font-black uppercase tracking-wider rounded-md shadow-sm ${booking.statusStyle}`}>
-                  {booking.status}
-                </span>
-              </div>
-            </div>
-
-            {/* Content Box */}
-            <div className="flex-1 py-4 pr-6 flex flex-col">
+        {loading ? (
+          <p className="text-slate-500 font-medium py-10 text-center">Loading your bookings...</p>
+        ) : filteredBookings.length === 0 ? (
+          <p className="text-slate-400 font-medium py-10 text-center">No bookings found.</p>
+        ) : (
+          filteredBookings.map((booking) => (
+            <div key={booking.id} className="bg-white rounded-3xl p-3 border border-slate-100 shadow-sm flex flex-col md:flex-row gap-6 hover:shadow-md transition-shadow">
               
-              {/* Header */}
-              <div className="flex justify-between items-start mb-6">
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900 tracking-tight mb-1">{booking.title}</h3>
-                  <div className="flex items-center gap-1.5 text-slate-500 font-medium text-sm">
-                    <MapPin size={16} />
-                    <span>{booking.location}</span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-2xl font-black text-slate-900 tracking-tight flex items-baseline gap-1 justify-end">
-                    {booking.price}<span className="text-sm font-semibold text-slate-400">/mo</span>
-                  </p>
-                  {booking.priceSubtext && (
-                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-0.5">
-                      {booking.priceSubtext}
-                    </p>
-                  )}
+              {/* Image Box */}
+              <div className="w-full md:w-80 h-64 md:h-auto rounded-2xl overflow-hidden relative shrink-0">
+                <img 
+                  src={booking.property?.photos || "https://images.unsplash.com/photo-1600607687931-cece5ce21408?w=500&q=80"} 
+                  alt={booking.property?.title || "Property"}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute top-4 left-4">
+                  <span className={`px-3 py-1 text-[9px] font-black uppercase tracking-wider rounded-md shadow-sm ${getStatusStyle(booking.status)}`}>
+                    {booking.status || "PENDING"}
+                  </span>
                 </div>
               </div>
 
-              {/* Grid Details */}
-              <div className="grid grid-cols-2 gap-8 mb-auto mt-4">
-                <div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">{booking.meta1Label}</p>
-                  <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
-                    {booking.meta1Icon}
-                    {booking.meta1Value}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">{booking.meta2Label}</p>
-                  
-                  {booking.meta2Label === "REVIEW" ? (
-                    <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Star key={star} size={14} className="fill-slate-300 text-slate-300" />
-                      ))}
-                      {/* Note: since template shows empty stars waiting for review, filled logic maps according to dynamic data */}
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
-                      {booking.meta2Icon}
-                      {booking.meta2Value}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="border-t border-slate-100 my-6"></div>
-
-              {/* Footer */}
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mt-auto">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {booking.tags.map((tag, idx) => (
-                    <span key={idx} className="px-3 py-1 bg-blue-50/80 text-blue-700 text-[9px] font-black uppercase tracking-wider rounded-full">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
+              {/* Content Box */}
+              <div className="flex-1 py-4 pr-6 flex flex-col">
                 
-                <div className="flex items-center gap-4 w-full sm:w-auto">
-                  {booking.actions.map((action, idx) => {
-                    const isLink = action.label === "View Details" || action.label === "Details";
-                    if (isLink) {
-                      return (
-                        <Link 
-                          key={idx} 
-                          href={`/tenant/bookings/${booking.id}`}
-                          className={`px-5 py-2.5 rounded-lg transition-colors text-xs font-bold block text-center ${action.style}`}
-                        >
-                          {action.label}
-                        </Link>
-                      );
-                    }
-                    return (
-                      <button 
-                        key={idx} 
-                        className={`px-5 py-2.5 rounded-lg transition-colors text-xs font-bold ${action.style}`}
-                      >
-                        {action.label}
-                      </button>
-                    );
-                  })}
+                {/* Header */}
+                <div className="flex justify-between items-start mb-6">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-900 tracking-tight mb-1">
+                      {booking.property?.title || `Property #${booking.propertyId}`}
+                    </h3>
+                    <div className="flex items-center gap-1.5 text-slate-500 font-medium text-sm">
+                      <MapPin size={16} />
+                      <span>
+                        {booking.property
+                          ? `${booking.property.city || ""}, ${booking.property.district || ""}`.trim().replace(/^,|,$/, "") || booking.property.address
+                          : "—"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-black text-slate-900 tracking-tight flex items-baseline gap-1 justify-end">
+                      ${booking.monthlyRent?.toLocaleString() || 0}<span className="text-sm font-semibold text-slate-400">/mo</span>
+                    </p>
+                  </div>
                 </div>
-              </div>
 
+                {/* Grid Details */}
+                <div className="grid grid-cols-2 gap-8 mb-auto mt-4">
+                  <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">MOVE-IN DATE</p>
+                    <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
+                      <CalendarDays size={16} />
+                      {booking.moveInDate || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">DURATION</p>
+                    <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
+                      <Clock size={16} />
+                      {booking.rentalDuration || "—"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 my-6"></div>
+
+                {/* Footer */}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mt-auto">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-3 py-1 bg-blue-50/80 text-blue-700 text-[9px] font-black uppercase tracking-wider rounded-full">
+                      {booking.property?.bedrooms || 0} BEDROOMS
+                    </span>
+                    <span className="px-3 py-1 bg-blue-50/80 text-blue-700 text-[9px] font-black uppercase tracking-wider rounded-full">
+                      {booking.property?.propertyType || "PROPERTY"}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-4 w-full sm:w-auto">
+                    <button className="text-slate-900 font-bold text-sm bg-transparent hover:underline px-5 py-2.5 rounded-lg transition-colors">
+                      Contact Owner
+                    </button>
+                    <Link 
+                      href={`/tenant/properties/${booking.propertyId}`}
+                      className="px-5 py-2.5 rounded-lg transition-colors text-xs font-bold block text-center bg-[#0b0f19] text-white shadow-md hover:bg-slate-800"
+                    >
+                      View Details
+                    </Link>
+                  </div>
+                </div>
+
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { use } from "react";
 import Link from "next/link";
 import { 
   MapPin,
@@ -16,7 +16,84 @@ import {
   ChevronDown
 } from "lucide-react";
 
-export default function CompleteRequestPage({ params }: { params: { id: string } }) {
+import { useRouter } from "next/navigation";
+
+export default function CompleteRequestPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const router = useRouter();
+  const [property, setProperty] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const [formData, setFormData] = React.useState({
+    moveInDate: "",
+    rentalDuration: "1 year (Recommended)",
+    occupants: 1,
+    message: ""
+  });
+
+  React.useEffect(() => {
+    const fetchProperty = async () => {
+      try {
+        const res = await fetch(`http://localhost:8080/api/properties/${id}`);
+        if(res.ok) {
+          const data = await res.json();
+          setProperty(data);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProperty();
+  }, [id]);
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    try {
+      const tenantId = localStorage.getItem("userId") || "1";
+      const token = localStorage.getItem("token");
+
+      const monthly = property.monthlyRent || 0;
+      const payload = {
+        tenantId: parseInt(tenantId),
+        propertyId: parseInt(id),
+        moveInDate: formData.moveInDate,
+        rentalDuration: formData.rentalDuration,
+        occupants: formData.occupants,
+        message: formData.message,
+        monthlyRent: monthly,
+        serviceFee: 450,
+        totalAmount: (monthly * 1) + 450 + monthly, // Initial + fee + deposit
+        status: "PENDING"
+      };
+
+      const res = await fetch("http://localhost:8080/api/bookings", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if(res.ok) {
+        alert("Booking request submitted successfully!");
+        router.push("/tenant/bookings");
+      } else {
+        alert("Failed to submit request.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error submitting booking.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) return <div className="p-8">Loading details...</div>;
+  if (!property) return <div className="p-8">Property not found.</div>;
   return (
     <div className="max-w-[1200px] mx-auto px-8 py-8 font-sans pb-32">
       
@@ -58,7 +135,7 @@ export default function CompleteRequestPage({ params }: { params: { id: string }
             <div className="flex-1 py-2 w-full pr-4">
               <div className="flex items-center gap-3 mb-3">
                 <span className="px-2.5 py-1 bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-wider rounded-md">
-                  PENTHOUSE
+                  {property.propertyType || "PROPERTY"}
                 </span>
                 <span className="px-2.5 py-1 bg-green-50 text-green-700 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md">
                   <CheckCircle2 size={12} className="text-green-600" />
@@ -66,25 +143,25 @@ export default function CompleteRequestPage({ params }: { params: { id: string }
                 </span>
               </div>
               
-              <h2 className="text-2xl font-bold text-slate-900 tracking-tight mb-2">Azure Sky Penthouse</h2>
+              <h2 className="text-2xl font-bold text-slate-900 tracking-tight mb-2">{property.title}</h2>
               
               <div className="flex items-center gap-1.5 text-slate-500 mb-6">
                 <MapPin size={16} />
-                <span className="text-sm font-semibold">Upper East Side, Manhattan</span>
+                <span className="text-sm font-semibold">{property.city ? `${property.city}, ${property.district}` : property.address}</span>
               </div>
               
               <div className="flex justify-between items-center text-left pt-2">
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">BEDS</p>
-                  <p className="text-sm font-bold text-slate-900">3 Rooms</p>
+                  <p className="text-sm font-bold text-slate-900">{property.bedrooms || 0} Rooms</p>
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">BATHS</p>
-                  <p className="text-sm font-bold text-slate-900">2.5 Units</p>
+                  <p className="text-sm font-bold text-slate-900">{property.bathrooms || 0} Units</p>
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">AREA</p>
-                  <p className="text-sm font-bold text-slate-900">2,450 sqft</p>
+                  <p className="text-sm font-bold text-slate-900">{property.areaSize || 0} sqft</p>
                 </div>
               </div>
             </div>
@@ -111,8 +188,9 @@ export default function CompleteRequestPage({ params }: { params: { id: string }
                       <CalendarDays size={18} />
                     </div>
                     <input 
-                      type="text" 
-                      placeholder="Select Date" 
+                      type="date" 
+                      value={formData.moveInDate}
+                      onChange={(e) => setFormData({...formData, moveInDate: e.target.value})}
                       className="w-full pl-11 pr-4 py-3.5 bg-slate-100/80 border-transparent rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-slate-300 transition-colors text-slate-900 placeholder:text-slate-500"
                     />
                   </div>
@@ -124,7 +202,10 @@ export default function CompleteRequestPage({ params }: { params: { id: string }
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
                       <Clock size={18} />
                     </div>
-                    <select className="w-full pl-11 pr-10 py-3.5 bg-slate-100/80 border-transparent rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-slate-300 transition-colors text-slate-900 appearance-none cursor-pointer">
+                    <select 
+                      value={formData.rentalDuration}
+                      onChange={(e) => setFormData({...formData, rentalDuration: e.target.value})}
+                      className="w-full pl-11 pr-10 py-3.5 bg-slate-100/80 border-transparent rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-slate-300 transition-colors text-slate-900 appearance-none cursor-pointer">
                       <option>1 year (Recommended)</option>
                       <option>6 months</option>
                       <option>2 years</option>
@@ -144,7 +225,8 @@ export default function CompleteRequestPage({ params }: { params: { id: string }
                   </div>
                   <input 
                     type="number" 
-                    defaultValue="1" 
+                    value={formData.occupants}
+                    onChange={(e) => setFormData({...formData, occupants: parseInt(e.target.value)})}
                     min="1"
                     className="w-full pl-11 pr-4 py-3.5 bg-slate-100/80 border-transparent rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-slate-300 transition-colors text-slate-900"
                   />
@@ -154,6 +236,8 @@ export default function CompleteRequestPage({ params }: { params: { id: string }
               <div>
                 <label className="block text-xs font-bold text-slate-900 mb-2">Message to Owner</label>
                 <textarea 
+                  value={formData.message}
+                  onChange={(e) => setFormData({...formData, message: e.target.value})}
                   placeholder="Tell the owner a bit about yourself, your profession, and any specific requirements..." 
                   className="w-full p-4 bg-slate-100/80 border-transparent rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-slate-300 transition-colors text-slate-900 placeholder:text-slate-500 resize-none h-32 leading-relaxed"
                 ></textarea>
@@ -179,7 +263,7 @@ export default function CompleteRequestPage({ params }: { params: { id: string }
               <div className="space-y-5 mb-8 text-sm font-semibold relative z-10">
                 <div className="flex justify-between items-center">
                   <span className="text-slate-400">Monthly Rent</span>
-                  <span className="text-white font-bold">$12,500</span>
+                  <span className="text-white font-bold">${property.monthlyRent || 0}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-400">Service Fee</span>
@@ -188,7 +272,7 @@ export default function CompleteRequestPage({ params }: { params: { id: string }
                 <div className="flex justify-between items-start pt-2">
                   <span className="text-slate-400">Security Deposit</span>
                   <div className="text-right">
-                    <span className="text-white font-bold block mb-0.5">$12,500</span>
+                    <span className="text-white font-bold block mb-0.5">${property.monthlyRent || 0}</span>
                     <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wider">Refundable</span>
                   </div>
                 </div>
@@ -199,15 +283,18 @@ export default function CompleteRequestPage({ params }: { params: { id: string }
                   <div className="flex flex-col">
                     <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-1">TOTAL TO PAY</span>
                   </div>
-                  <span className="text-4xl font-black text-white tracking-tight">$25,450</span>
+                  <span className="text-4xl font-black text-white tracking-tight">${((property.monthlyRent || 0) * 2 + 450).toLocaleString()}</span>
                 </div>
                 <p className="text-[10px] font-semibold text-slate-400 leading-relaxed max-w-[200px]">
                   Initial payment covers first month + deposit + fees
                 </p>
               </div>
 
-              <button className="w-full py-4 bg-white text-slate-900 rounded-xl text-sm font-bold shadow-md hover:bg-slate-100 transition-colors mb-6 flex justify-between items-center px-6 relative z-10">
-                Submit Rental Request
+              <button 
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="w-full py-4 bg-white text-slate-900 rounded-xl text-sm font-bold shadow-md hover:bg-slate-100 transition-colors mb-6 flex justify-between items-center px-6 relative z-10 disabled:opacity-75 disabled:cursor-not-allowed">
+                {submitting ? "Submitting..." : "Submit Rental Request"}
                 <ArrowRight size={18} />
               </button>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, use } from "react";
 import { 
   MapPin, 
   Star, 
@@ -19,9 +19,31 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-export default function TenantPropertyDetailsPage({ params }: { params: { id: string } }) {
-  // Hardcoded for demo matching the template design (The Obsidian Suite)
+export default function TenantPropertyDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const [guests, setGuests] = useState(2);
+  const [property, setProperty] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  React.useEffect(() => {
+    const fetchProperty = async () => {
+      try {
+        const res = await fetch(`http://localhost:8080/api/properties/${id}`);
+        if(res.ok) {
+          const data = await res.json();
+          setProperty(data);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProperty();
+  }, [id]);
+
+  if (loading) return <div className="p-8">Loading details...</div>;
+  if (!property) return <div className="p-8">Property not found.</div>;
 
   return (
     <div className="max-w-[1200px] mx-auto px-6 py-8 font-sans pb-32">
@@ -30,8 +52,8 @@ export default function TenantPropertyDetailsPage({ params }: { params: { id: st
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
         <div className="md:col-span-2 h-[400px] md:h-[500px] rounded-3xl overflow-hidden relative shadow-sm">
           <img 
-            src="https://images.unsplash.com/photo-1600607687931-cece5ce21408?w=1200&q=80" 
-            alt="The Obsidian Suite Living Room" 
+            src={property.photos || "https://images.unsplash.com/photo-1600607687931-cece5ce21408?w=1200&q=80"} 
+            alt={property.title} 
             className="w-full h-full object-cover"
           />
         </div>
@@ -63,7 +85,7 @@ export default function TenantPropertyDetailsPage({ params }: { params: { id: st
           <div>
             <div className="flex items-center gap-4 mb-5">
               <span className="px-3 py-1.5 bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-wider rounded-md">
-                AVAILABLE NOW
+                {property.availabilityStatus || "AVAILABLE NOW"}
               </span>
               <div className="flex items-center gap-1.5">
                 <Star size={16} className="fill-yellow-400 text-yellow-400" />
@@ -74,22 +96,17 @@ export default function TenantPropertyDetailsPage({ params }: { params: { id: st
             </div>
             
             <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 tracking-tight mb-4">
-              The Obsidian Suite
+              {property.title}
             </h1>
             
             <div className="flex items-center gap-2 text-slate-600 font-semibold mb-8">
               <MapPin size={18} />
-              <span>Lower Manhattan, NY</span>
+              <span>{property.city ? `${property.city}, ${property.district}` : property.address}</span>
             </div>
             
             <div className="space-y-6 text-slate-600 leading-relaxed">
               <h2 className="text-xl font-bold text-slate-900 mb-4 tracking-tight">About this Residence</h2>
-              <p>
-                Commanding the top two floors of a premier boutique development, The Obsidian Suite is a masterclass in architectural restraint and material luxury. Designed for the discerning individual, the residence features custom obsidian marble floors, sound-proof triple-glazed windows, and a private wraparound terrace offering 270-degree views of the Hudson River and the Financial District.
-              </p>
-              <p>
-                Every detail has been curated to provide a seamless transition from the high-octane energy of Manhattan to a serene, gallery-like sanctuary.
-              </p>
+              <p className="whitespace-pre-wrap">{property.description || "Experience a premier boutqiue lifestyle..."}</p>
             </div>
           </div>
 
@@ -206,7 +223,7 @@ export default function TenantPropertyDetailsPage({ params }: { params: { id: st
               <div className="flex justify-between items-start mb-8">
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Monthly Rent</p>
-                  <p className="text-3xl font-black text-slate-900 tracking-tight">$12,500<span className="text-base font-semibold text-slate-400">/mo</span></p>
+                  <p className="text-3xl font-black text-slate-900 tracking-tight">${property.monthlyRent || 0}<span className="text-base font-semibold text-slate-400">/mo</span></p>
                 </div>
                 <button className="w-10 h-10 rounded-full hover:bg-slate-50 flex items-center justify-center transition-colors text-slate-400 hover:text-slate-900">
                   <Share size={18} />
@@ -237,8 +254,8 @@ export default function TenantPropertyDetailsPage({ params }: { params: { id: st
               {/* Price Breakdown */}
               <div className="space-y-4 mb-6 pt-2">
                 <div className="flex justify-between items-center text-sm font-medium">
-                  <span className="text-slate-500 underline underline-offset-4 decoration-slate-300">$12,500 x 1 month</span>
-                  <span className="text-slate-900">$12,500.00</span>
+                  <span className="text-slate-500 underline underline-offset-4 decoration-slate-300">${property.monthlyRent || 0} x 1 month</span>
+                  <span className="text-slate-900">${property.monthlyRent || 0}.00</span>
                 </div>
                 <div className="flex justify-between items-center text-sm font-medium">
                   <span className="text-slate-500 underline underline-offset-4 decoration-slate-300">Service Fee</span>
@@ -252,11 +269,11 @@ export default function TenantPropertyDetailsPage({ params }: { params: { id: st
 
               <div className="border-t border-slate-100 pt-6 mb-8 flex justify-between items-center">
                 <span className="text-base font-bold text-slate-900">Total</span>
-                <span className="text-xl font-bold text-slate-900">$13,270.00</span>
+                <span className="text-xl font-bold text-slate-900">${((property.monthlyRent || 0) + 420 + 350).toLocaleString()}</span>
               </div>
 
               <Link 
-                href={`/tenant/properties/${params.id}/book`}
+                href={`/tenant/properties/${id}/book`}
                 className="w-full py-4 bg-[#0b0f19] text-white rounded-xl text-base font-bold shadow-md hover:bg-slate-800 transition-colors mb-4 flex items-center justify-center cursor-pointer"
               >
                 Request to Book

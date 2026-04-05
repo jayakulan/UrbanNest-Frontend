@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -21,13 +21,39 @@ export default function TenantDashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [userName, setUserName] = useState("Loading...");
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const role = localStorage.getItem("role");
-    if (!token || role !== "TENANT") {
-      router.push("/login");
-    }
+    const fetchUser = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const userId = localStorage.getItem("userId");
+        const role = localStorage.getItem("role");
+
+        if (!token || role !== "TENANT") {
+          router.push("/login");
+          return;
+        }
+
+        if (userId) {
+          const res = await fetch(`http://localhost:8080/api/users/${userId}`, {
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "Content-Type": "application/json"
+            }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setUserName(data.fullName || data.name || "Tenant Profile");
+          } else {
+            setUserName("Tenant Profile");
+          }
+        }
+      } catch (err) {
+        setUserName("Tenant Profile");
+      }
+    };
+    fetchUser();
   }, [router]);
 
   // Define explicitly with an optional badge to keep TS happy
@@ -93,8 +119,8 @@ export default function TenantDashboardLayout({
               className="w-10 h-10 rounded-full object-cover shadow-sm bg-slate-200 shrink-0"
             />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-slate-900 truncate">Alex Rivera</p>
-              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Premium Tenant</p>
+              <p className="text-sm font-bold text-slate-900 truncate">{userName}</p>
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Tenant</p>
             </div>
           </Link>
           <button

@@ -14,52 +14,22 @@ export default function TenantPropertiesPage() {
   const [propertyType, setPropertyType] = useState("Apartment");
   const [bedrooms, setBedrooms] = useState("2");
   
-  const properties = [
-    {
-      id: 1,
-      title: "The Obsidian Suite",
-      location: "Lower Manhattan, NY",
-      price: "$12,500",
-      rating: 4.9,
-      status: "AVAILABLE NOW",
-      statusMode: "dark",
-      image: "https://images.unsplash.com/photo-1600607687931-cece5ce21408?w=800&q=80",
-      tags: ["2 BEDROOMS", "SMART HOME"]
-    },
-    {
-      id: 2,
-      title: "Ethereal Loft",
-      location: "Brooklyn Heights, NY",
-      price: "$8,200",
-      rating: 4.8,
-      status: "CLOSING SOON",
-      statusMode: "light",
-      image: "https://images.unsplash.com/photo-1600566753376-12c8ab7fb75b?w=800&q=80",
-      tags: ["1 BEDROOM", "ART GALLERY STYLE"]
-    },
-    {
-      id: 3,
-      title: "The Glass Pavilion",
-      location: "Beverly Hills, CA",
-      price: "$24,000",
-      rating: 5.0,
-      status: "AVAILABLE NOW",
-      statusMode: "dark",
-      image: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80",
-      tags: ["4 BEDROOMS", "PRIVATE POOL"]
-    },
-    {
-      id: 4,
-      title: "Skyline Terrace",
-      location: "Chicago, IL",
-      price: "$10,500",
-      rating: 4.7,
-      status: "AVAILABLE NOW",
-      statusMode: "dark",
-      image: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&q=80",
-      tags: ["3 BEDROOMS", "GYM ACCESS"]
-    }
-  ];
+  const [properties, setProperties] = useState<any[]>([]);
+
+  React.useEffect(() => {
+    const fetchProperties = async () => {
+      try {
+        const res = await fetch("http://localhost:8080/api/properties");
+        if(res.ok) {
+          const data = await res.json();
+          setProperties(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch properties", err);
+      }
+    };
+    fetchProperties();
+  }, []);
 
   return (
     <div className="max-w-[1400px] mx-auto px-8 py-8 font-sans pb-24">
@@ -196,7 +166,7 @@ export default function TenantPropertiesPage() {
               {/* Image Section */}
               <div className="relative h-72 md:h-80 w-full overflow-hidden">
                 <img 
-                  src={prop.image} 
+                  src={prop.photos || "https://images.unsplash.com/photo-1600607687931-cece5ce21408?w=800&q=80"} 
                   alt={prop.title} 
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
                 />
@@ -204,10 +174,8 @@ export default function TenantPropertiesPage() {
                   <Heart size={18} className="fill-slate-900" />
                 </button>
                 <div className="absolute bottom-4 left-4 z-10">
-                  <span className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md ${
-                    prop.statusMode === 'dark' ? 'bg-[#0b0f19]/90 backdrop-blur-sm text-white' : 'bg-white/90 backdrop-blur-sm text-slate-900'
-                  }`}>
-                    {prop.status}
+                  <span className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-[#0b0f19]/90 backdrop-blur-sm text-white">
+                    {prop.availabilityStatus || "AVAILABLE NOW"}
                   </span>
                 </div>
               </div>
@@ -219,22 +187,23 @@ export default function TenantPropertiesPage() {
                   <h3 className="text-xl font-bold text-slate-900 tracking-tight">{prop.title}</h3>
                   <div className="flex items-center gap-1">
                     <Star size={14} className="fill-yellow-400 text-yellow-400 mb-0.5" />
-                    <span className="font-bold text-slate-900 text-sm">{prop.rating}</span>
+                    <span className="font-bold text-slate-900 text-sm">4.9</span>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-1.5 text-slate-500 mb-5">
                   <MapPin size={16} />
-                  <span className="text-sm font-semibold">{prop.location}</span>
+                  <span className="text-sm font-semibold">{prop.city ? `${prop.city}, ${prop.district}` : prop.address}</span>
                 </div>
 
                 {/* Tags */}
                 <div className="flex items-center gap-2 mb-6">
-                  {prop.tags.map((tag, idx) => (
-                    <span key={idx} className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider bg-blue-50/80 text-blue-700 rounded-full">
-                      {tag}
-                    </span>
-                  ))}
+                  <span className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider bg-blue-50/80 text-blue-700 rounded-full">
+                    {prop.bedrooms || 0} BEDROOMS
+                  </span>
+                  <span className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider bg-blue-50/80 text-blue-700 rounded-full">
+                    {prop.propertyType || "PROPERTY"}
+                  </span>
                 </div>
 
                 <div className="border-t border-slate-100 my-4 line-hidden hidden"></div>
@@ -243,7 +212,7 @@ export default function TenantPropertiesPage() {
                 <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-100">
                   <div className="flex flex-col">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Monthly Rent</span>
-                    <span className="text-2xl font-black text-slate-900">{prop.price}</span>
+                    <span className="text-2xl font-black text-slate-900">${prop.monthlyRent || 0}</span>
                   </div>
                   <Link 
                     href={`/tenant/properties/${prop.id}`}

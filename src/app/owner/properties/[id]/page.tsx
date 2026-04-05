@@ -23,6 +23,39 @@ export default function PropertyDetailsPage({
   params: Promise<{ id: string }>;
 }) {
   const resolvedParams = use(params);
+  const [property, setProperty] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const fetchProperty = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`http://localhost:8080/api/properties/${resolvedParams.id}`, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setProperty(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch property details", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProperty();
+  }, [resolvedParams.id]);
+
+  if (loading) {
+    return <div className="p-8 text-slate-500 font-bold">Loading property details...</div>;
+  }
+
+  if (!property) {
+    return <div className="p-8 text-red-500 font-bold">Property not found.</div>;
+  }
 
   return (
     <div className="max-w-[1600px] mx-auto p-8 font-sans pb-24">
@@ -30,10 +63,10 @@ export default function PropertyDetailsPage({
       <div className="flex flex-col xl:flex-row gap-8 mb-8">
         
         {/* Left Image Section */}
-        <div className="relative flex-1 h-[400px] rounded-3xl overflow-hidden shadow-sm">
+        <div className="relative flex-1 h-[400px] rounded-3xl overflow-hidden shadow-sm bg-slate-900">
           <img 
-            src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1600&q=80" 
-            alt="Property Cover" 
+            src={property.photos || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1600&q=80"} 
+            alt={property.title} 
             className="absolute inset-0 w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[#0f172a]/90 via-[#0f172a]/20 to-transparent"></div>
@@ -41,7 +74,7 @@ export default function PropertyDetailsPage({
           <div className="absolute bottom-8 left-8">
             <div className="flex items-center gap-3 mb-4">
               <span className="px-3 py-1 bg-white/90 text-slate-900 text-[10px] font-black uppercase tracking-wider rounded-full shadow-sm">
-                Active
+                {property.availabilityStatus || "ACTIVE"}
               </span>
               <span className="px-3 py-1 bg-black/40 backdrop-blur-md text-white border border-white/20 text-[10px] font-bold uppercase tracking-wider rounded-full">
                 Verified Listing
@@ -49,30 +82,29 @@ export default function PropertyDetailsPage({
             </div>
             
             <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight mb-2 drop-shadow-md">
-              Azure Sky Penthouse
+              {property.title}
             </h1>
             
             <div className="flex items-center gap-2 text-white/80 font-medium">
               <MapPin size={16} />
-              <span>Chelsea, London</span>
+              <span>{property.city ? `${property.city}, ${property.district}` : property.address}</span>
             </div>
           </div>
         </div>
 
-        {/* Right Info Section */}
         <div className="w-full xl:w-[400px] bg-white rounded-3xl p-8 shadow-sm border border-slate-100 flex flex-col justify-center">
-          <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Monthly Revenue</p>
-          <h2 className="text-5xl font-bold text-slate-900 mb-6 tracking-tight">£4,200</h2>
+          <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Monthly Rent</p>
+          <h2 className="text-5xl font-bold text-slate-900 mb-6 tracking-tight">${property.monthlyRent || 0}</h2>
           
           <div className="flex flex-wrap gap-2 mb-10">
-            <span className="px-4 py-2 bg-blue-50 text-blue-700 text-xs font-bold rounded-xl">
-              Penthouse
+            <span className="px-4 py-2 bg-blue-50 text-blue-700 text-xs font-bold rounded-xl uppercase">
+              {property.propertyType || "PROPERTY"}
             </span>
             <span className="px-4 py-2 bg-blue-50 text-blue-700 text-xs font-bold rounded-xl">
-              3 Bedrooms
+              {property.bedrooms || 0} Bedrooms
             </span>
-            <span className="px-4 py-2 bg-blue-50 text-blue-700 text-xs font-bold rounded-xl">
-              Furnished
+            <span className="px-4 py-2 bg-blue-50 text-blue-700 text-xs font-bold rounded-xl uppercase">
+              {property.category || "Standard"}
             </span>
           </div>
 
@@ -120,13 +152,8 @@ export default function PropertyDetailsPage({
           {/* About this Property */}
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
             <h2 className="text-xl font-bold text-slate-900 mb-6">About this Property</h2>
-            <p className="text-slate-600 leading-relaxed font-medium">
-              Experience the pinnacle of urban luxury in this breathtaking Azure Sky Penthouse. 
-              Located in the heart of Chelsea, this architectural masterpiece features floor-to-ceiling 
-              windows offering 360-degree views of the London skyline and the River Thames. 
-              The interior boasts custom Italian cabinetry, white oak flooring, and a state-of-the-art 
-              home automation system. With a private wrap-around terrace and bespoke lighting 
-              throughout, this property represents the finest in modern residential living.
+            <p className="text-slate-600 leading-relaxed font-medium whitespace-pre-wrap">
+              {property.description || "No description provided for this listing."}
             </p>
           </div>
 
@@ -187,22 +214,22 @@ export default function PropertyDetailsPage({
               
               <div>
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Total Area</p>
-                <p className="text-base font-bold text-slate-900">1,800 sq ft</p>
+                <p className="text-base font-bold text-slate-900">{property.areaSize || 0} sq ft</p>
               </div>
               
               <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Floor Level</p>
-                <p className="text-base font-bold text-slate-900">12th Floor (Penthouse)</p>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Bathrooms</p>
+                <p className="text-base font-bold text-slate-900">{property.bathrooms || 0}</p>
               </div>
               
               <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Year Built</p>
-                <p className="text-base font-bold text-slate-900">2022</p>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Zip Code</p>
+                <p className="text-base font-bold text-slate-900">{property.zipCode || "N/A"}</p>
               </div>
               
               <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Pet Friendly</p>
-                <p className="text-base font-bold text-slate-900">Yes</p>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Amenities</p>
+                <p className="text-base font-bold text-slate-900 capitalize text-wrap">{property.amenities ? property.amenities.split(",").join(", ") : "N/A"}</p>
               </div>
 
             </div>

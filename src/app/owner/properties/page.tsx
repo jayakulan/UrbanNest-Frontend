@@ -19,65 +19,44 @@ export default function MyPropertiesPage() {
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState("All");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [properties, setProperties] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const filters = ["All", "Active", "Pending", "Rented", "Inactive"];
 
-  const properties = [
-    {
-      id: 1,
-      title: "Azure Sky",
-      type: "PENTHOUSE",
-      location: "Downtown District, NY",
-      rent: "4,200",
-      status: "ACTIVE",
-      image: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80",
-    },
-    {
-      id: 2,
-      title: "Lumina Garden",
-      type: "VILLA",
-      location: "Greenwich Village, NY",
-      rent: "6,800",
-      status: "PENDING",
-      image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80",
-    },
-    {
-      id: 3,
-      title: "Obsidian Loft",
-      type: "LOFT",
-      location: "Brooklyn Heights, NY",
-      rent: "3,100",
-      status: "RENTED",
-      image: "https://images.unsplash.com/photo-1600607687931-cece5ce21408?w=800&q=80",
-    },
-    {
-      id: 4,
-      title: "Metro Studio",
-      type: "STUDIO",
-      location: "Long Island City, NY",
-      rent: "2,450",
-      status: "ACTIVE",
-      image: "https://images.unsplash.com/photo-1600607687644-aac4c15cecb1?w=800&q=80",
-    },
-    {
-      id: 5,
-      title: "The Mini",
-      type: "APARTMENT",
-      location: "Upper East Side, NY",
-      rent: "5,200",
-      status: "INACTIVE",
-      image: "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=800&q=80",
-    }
-  ];
+  React.useEffect(() => {
+    const fetchProperties = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const userId = localStorage.getItem("userId") || "18"; // hardcoded testing fallback
+        
+        const res = await fetch(`http://localhost:8080/api/properties/owner/${userId}`, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+          }
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          setProperties(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch properties:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchProperties();
+  }, []);
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case "ACTIVE": return "bg-green-500 text-white";
-      case "PENDING": return "bg-orange-500 text-white";
-      case "RENTED": return "bg-blue-500 text-white";
-      case "INACTIVE": return "bg-slate-500 text-white";
-      default: return "bg-slate-500 text-white";
-    }
+    const s = status?.toUpperCase() || "";
+    if (s === "ACTIVE" || s === "AVAILABLE NOW") return "bg-green-500 text-white";
+    if (s === "PENDING") return "bg-orange-500 text-white";
+    if (s === "RENTED") return "bg-blue-500 text-white";
+    return "bg-slate-500 text-white";
   };
 
   return (
@@ -149,15 +128,15 @@ export default function MyPropertiesPage() {
             {/* Image Container */}
             <div className="relative h-56 rounded-2xl overflow-hidden mb-5">
               <img 
-                src={property.image} 
+                src={property.photos || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80"} 
                 alt={property.title} 
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
               />
               
               {/* Top Badges */}
               <div className="absolute top-4 left-4 right-4 flex justify-between items-start">
-                <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-wider rounded-md shadow-sm ${getStatusColor(property.status)}`}>
-                  {property.status}
+                <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-wider rounded-md shadow-sm ${getStatusColor(property.availabilityStatus || "ACTIVE")}`}>
+                  {property.availabilityStatus || "ACTIVE"}
                 </span>
                 <button className="w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-white shadow-sm transition-all">
                   <Heart size={16} className="fill-current" />
@@ -170,20 +149,20 @@ export default function MyPropertiesPage() {
               <div className="flex items-center gap-3 mb-2">
                 <h3 className="text-lg font-bold text-slate-900 truncate">{property.title}</h3>
                 <span className="px-2 py-1 bg-blue-50 text-blue-600 text-[10px] font-bold uppercase tracking-wider rounded-md">
-                  {property.type}
+                  {property.propertyType || "PROPERTY"}
                 </span>
               </div>
               
-              <div className="flex items-center gap-1.5 text-slate-500 mb-6">
-                <MapPin size={14} />
-                <span className="text-sm font-medium">{property.location}</span>
+              <div className="flex items-center gap-1.5 text-slate-500 mb-6 truncate">
+                <MapPin size={14} className="shrink-0" />
+                <span className="text-sm font-medium truncate">{property.city ? `${property.city}, ${property.district}` : property.address || "No Location"}</span>
               </div>
 
               <div className="flex items-end justify-between pt-5 border-t border-slate-100">
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Monthly Rent</p>
                   <p className="text-xl font-bold text-slate-900">
-                    ${property.rent}<span className="text-sm text-slate-500 font-medium">/mo</span>
+                    ${property.monthlyRent || 0}<span className="text-sm text-slate-500 font-medium">/mo</span>
                   </p>
                 </div>
                 

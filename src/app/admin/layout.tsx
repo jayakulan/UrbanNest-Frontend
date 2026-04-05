@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -23,13 +23,39 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [userName, setUserName] = useState("Loading...");
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const role = localStorage.getItem("role");
-    if (!token || role !== "ADMIN") {
-      router.push("/login");
-    }
+    const fetchUser = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const userId = localStorage.getItem("userId");
+        const role = localStorage.getItem("role");
+
+        if (!token || role !== "ADMIN") {
+          router.push("/login");
+          return;
+        }
+
+        if (userId) {
+          const res = await fetch(`http://localhost:8080/api/users/${userId}`, {
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "Content-Type": "application/json"
+            }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setUserName(data.fullName || data.name || "Admin Profile");
+          } else {
+            setUserName("Admin Profile");
+          }
+        }
+      } catch (err) {
+        setUserName("Admin Profile");
+      }
+    };
+    fetchUser();
   }, [router]);
 
   const navLinks: { name: string, href: string, icon: any, badge?: string }[] = [
@@ -97,8 +123,8 @@ export default function AdminLayout({
                 className="w-10 h-10 rounded-full object-cover shadow-sm bg-slate-300 shrink-0 border border-slate-200 group-hover:border-slate-400 transition-colors"
               />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-slate-900 truncate">Alexander Vance</p>
-                <p className="text-[10px] font-medium text-slate-500 truncate">Senior Administrator</p>
+                <p className="text-sm font-bold text-slate-900 truncate">{userName}</p>
+                <p className="text-[10px] font-medium text-slate-500 truncate">Administrator</p>
               </div>
             </Link>
             <button

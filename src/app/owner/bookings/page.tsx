@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Building2, 
-  Home, 
   MoreHorizontal, 
   Eye, 
   Hourglass, 
@@ -14,79 +13,89 @@ import {
 
 export default function BookingRequestsPage() {
   const [activeTab, setActiveTab] = useState("All Requests");
+  const [requests, setRequests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const tabs = ["All Requests", "Pending", "Approved", "Rejected", "Completed"];
 
-  const requests = [
-    {
-      id: 1,
-      tenant: {
-        name: "Eleanor May",
-        rating: "4.9",
-        reviews: 12,
-        avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&q=80",
-        online: true
-      },
-      property: {
-        name: "Skyline Penthouse",
-        location: "Unit 402 • Upper East Side, NY",
-        rent: "$4,500",
-        icon: <Building2 className="text-blue-600" size={20} />
-      },
-      contract: {
-        moveIn: "Oct 12, 2023",
-        duration: "12 Months",
-        total: "$54,000"
-      },
-      status: "PENDING REVIEW",
-      statusColor: "bg-orange-100 text-orange-700"
-    },
-    {
-      id: 2,
-      tenant: {
-        name: "Julian Vance",
-        rating: "4.7",
-        reviews: 0,
-        avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&q=80",
-        online: false
-      },
-      property: {
-        name: "Glass House Loft",
-        location: "Unit 12B • Chelsea, NY",
-        rent: "$3,800",
-        icon: <Home className="text-slate-700" size={20} />
-      },
-      contract: {
-        moveIn: "Sep 28, 2023",
-        duration: "24 Months",
-        total: null
-      },
-      status: "APPROVED",
-      statusColor: "bg-green-100 text-green-700"
-    },
-    {
-      id: 3,
-      tenant: {
-        name: "Sarah Jenkins",
-        rating: "5.0",
-        reviews: 0,
-        avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&q=80",
-        online: false
-      },
-      property: {
-        name: "Urban Garden Villa",
-        location: "Private Wing • Brooklyn, NY",
-        rent: "$6,200",
-        icon: <Home className="text-slate-700" size={20} />
-      },
-      contract: {
-        moveIn: "Nov 01, 2023",
-        duration: "12 Months",
-        total: null
-      },
-      status: "NEW REQUEST",
-      statusColor: "bg-blue-50 text-blue-600"
-    }
-  ];
+  useEffect(() => {
+    const fetchBookings = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const userId = localStorage.getItem("userId");
+        if (!userId) return;
+
+        // 1. Get all properties owned by this owner
+        const propRes = await fetch(`http://localhost:8080/api/properties/owner/${userId}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (!propRes.ok) return;
+        const properties: any[] = await propRes.json();
+
+        // 2. For each property, fetch its bookings, then enrich with tenant info
+        const allBookings: any[] = [];
+        await Promise.all(
+          properties.map(async (prop: any) => {
+            try {
+              const bRes = await fetch(`http://localhost:8080/api/bookings/property/${prop.id}`, {
+                headers: { "Authorization": `Bearer ${token}` }
+              });
+              if (!bRes.ok) return;
+              const bookings: any[] = await bRes.json();
+
+              await Promise.all(
+                bookings.map(async (b: any) => {
+                  let tenantName = `Tenant #${b.tenantId}`;
+                  try {
+                    const uRes = await fetch(`http://localhost:8080/api/users/${b.tenantId}`, {
+                      headers: { "Authorization": `Bearer ${token}` }
+                    });
+                    if (uRes.ok) {
+                      const uData = await uRes.json();
+                      tenantName = uData.fullName || uData.name || tenantName;
+                    }
+                  } catch { /* keep fallback name */ }
+
+                  allBookings.push({
+                    ...b,
+                    tenantName,
+                    property: prop
+                  });
+                })
+              );
+            } catch { /* skip failed property */ }
+          })
+        );
+
+        setRequests(allBookings);
+      } catch (err) {
+        console.error("Failed to fetch booking requests", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchBookings();
+  }, []);
+
+  const getStatusColor = (status: string) => {
+    const s = (status || "").toUpperCase();
+    if (s === "PENDING") return "bg-orange-100 text-orange-700";
+    if (s === "APPROVED") return "bg-green-100 text-green-700";
+    if (s === "REJECTED") return "bg-red-100 text-red-700";
+    if (s === "COMPLETED") return "bg-slate-100 text-slate-700";
+    return "bg-blue-50 text-blue-600";
+  };
+
+  const filteredRequests = activeTab === "All Requests"
+    ? requests
+    : requests.filter(r => (r.status || "").toUpperCase() === activeTab.toUpperCase());
+
+  // Stats
+  const pendingCount = requests.filter(r => r.status?.toUpperCase() === "PENDING").length;
+  const approvedCount = requests.filter(r => r.status?.toUpperCase() === "APPROVED").length;
+  const totalRevenue = requests
+    .filter(r => r.status?.toUpperCase() === "APPROVED")
+    .reduce((sum, r) => sum + (r.totalAmount || 0), 0);
 
   return (
     <div className="max-w-[1400px] mx-auto p-8 font-sans pb-24">
@@ -119,131 +128,132 @@ export default function BookingRequestsPage() {
 
       {/* Requests List */}
       <div className="space-y-6 mb-12">
-        {requests.map((req) => (
-          <div key={req.id} className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 flex flex-col xl:flex-row gap-8 relative hover:shadow-md transition-shadow">
-            
-            {/* Status Pill (Absolute on Top Right on large screens, standard flow on small) */}
-            <div className="absolute top-8 right-8 hidden xl:block">
-              <span className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg ${req.statusColor}`}>
-                {req.status}
-              </span>
-            </div>
-            
-            {/* Tenant Info */}
-            <div className="flex xl:flex-col gap-4 items-center xl:items-start xl:w-48 xl:border-r border-slate-100 xl:pr-8 shrink-0">
-              <div className="relative">
-                <img 
-                  src={req.tenant.avatar} 
-                  alt={req.tenant.name}
-                  className="w-16 h-16 rounded-2xl object-cover shadow-sm"
-                />
-                {req.tenant.online && (
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
-                )}
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 break-words">{req.tenant.name}</h3>
-                <div className="flex items-center gap-1.5 mt-1">
-                  <Star size={14} className="fill-yellow-400 text-yellow-400" />
-                  <span className="text-sm font-bold text-slate-900">{req.tenant.rating}</span>
-                  {req.tenant.reviews > 0 && (
-                    <span className="text-xs text-slate-400 font-medium">({req.tenant.reviews} Reviews)</span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Middle Content area */}
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8">
+        {loading ? (
+          <p className="text-slate-500 font-medium py-10 text-center">Loading booking requests...</p>
+        ) : filteredRequests.length === 0 ? (
+          <p className="text-slate-400 font-medium py-10 text-center">No booking requests found.</p>
+        ) : (
+          filteredRequests.map((req) => (
+            <div key={req.id} className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 flex flex-col xl:flex-row gap-8 relative hover:shadow-md transition-shadow">
               
-              {/* Property Info */}
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">Property Information</p>
-                <div className="flex gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-blue-50/50 border border-blue-100 flex items-center justify-center shrink-0">
-                    {req.property.icon}
-                  </div>
-                  <div>
-                    <h4 className="text-base font-bold text-slate-900">{req.property.name}</h4>
-                    <p className="text-xs font-medium text-slate-500 mt-1 mb-2">
-                      {req.property.location}
-                    </p>
-                    <p className="text-sm">
-                      <span className="font-bold text-slate-900">{req.property.rent}</span>
-                      <span className="text-slate-400 font-medium whitespace-pre"> / month</span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Contract Info */}
-              <div>
-                <div className="grid grid-cols-2 gap-y-4 gap-x-8 lg:mt-9">
-                  <div>
-                    <p className="text-xs font-medium text-slate-500 mb-1">Move-in Date</p>
-                    <p className="text-sm font-bold text-slate-900">{req.contract.moveIn}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-slate-500 mb-1">Duration</p>
-                    <p className="text-sm font-bold text-slate-900">{req.contract.duration}</p>
-                  </div>
-                  {req.contract.total && (
-                    <div className="col-span-2">
-                      <p className="text-xs font-medium text-slate-500 mb-1">Total Contract</p>
-                      <p className="text-sm font-bold text-slate-900">{req.contract.total}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="xl:w-64 flex flex-col justify-end gap-3 shrink-0">
-              {/* Mobile status pill */}
-              <div className="xl:hidden mb-4">
-                <span className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg ${req.statusColor}`}>
-                  {req.status}
+              {/* Status Pill */}
+              <div className="absolute top-8 right-8 hidden xl:block">
+                <span className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg ${getStatusColor(req.status)}`}>
+                  {req.status || "PENDING"}
                 </span>
               </div>
+              
+              {/* Tenant Info */}
+              <div className="flex xl:flex-col gap-4 items-center xl:items-start xl:w-48 xl:border-r border-slate-100 xl:pr-8 shrink-0">
+                <div className="relative">
+                  <div className="w-16 h-16 rounded-2xl bg-slate-200 flex items-center justify-center text-2xl font-bold text-slate-600 shadow-sm">
+                    {(req.tenantName || "T").charAt(0).toUpperCase()}
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 break-words">{req.tenantName}</h3>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <Star size={14} className="fill-yellow-400 text-yellow-400" />
+                    <span className="text-sm font-bold text-slate-900">4.8</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Middle Content */}
+              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8">
                 
-              {req.status === "PENDING REVIEW" && (
-                <>
-                  <button className="w-full py-3.5 bg-[#0b0f19] text-white rounded-xl font-bold hover:bg-slate-800 transition-colors shadow-md">
-                    Approve
-                  </button>
-                  <div className="flex gap-3 text-sm">
-                    <button className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition-colors">
-                      Reject
+                {/* Property Info */}
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">Property Information</p>
+                  <div className="flex gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-blue-50/50 border border-blue-100 flex items-center justify-center shrink-0">
+                      <Building2 className="text-blue-600" size={20} />
+                    </div>
+                    <div>
+                      <h4 className="text-base font-bold text-slate-900">{req.property?.title || `Property #${req.propertyId}`}</h4>
+                      <p className="text-xs font-medium text-slate-500 mt-1 mb-2">
+                        {req.property?.city ? `${req.property.city}, ${req.property.district}` : req.property?.address || "—"}
+                      </p>
+                      <p className="text-sm">
+                        <span className="font-bold text-slate-900">${req.monthlyRent?.toLocaleString() || 0}</span>
+                        <span className="text-slate-400 font-medium whitespace-pre"> / month</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contract Info */}
+                <div>
+                  <div className="grid grid-cols-2 gap-y-4 gap-x-8 lg:mt-9">
+                    <div>
+                      <p className="text-xs font-medium text-slate-500 mb-1">Move-in Date</p>
+                      <p className="text-sm font-bold text-slate-900">{req.moveInDate || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-slate-500 mb-1">Duration</p>
+                      <p className="text-sm font-bold text-slate-900">{req.rentalDuration || "—"}</p>
+                    </div>
+                    {req.totalAmount && (
+                      <div className="col-span-2">
+                        <p className="text-xs font-medium text-slate-500 mb-1">Total Amount</p>
+                        <p className="text-sm font-bold text-slate-900">${req.totalAmount?.toLocaleString()}</p>
+                      </div>
+                    )}
+                    {req.message && (
+                      <div className="col-span-2">
+                        <p className="text-xs font-medium text-slate-500 mb-1">Message</p>
+                        <p className="text-xs text-slate-700 font-medium italic line-clamp-2">&quot;{req.message}&quot;</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="xl:w-64 flex flex-col justify-end gap-3 shrink-0">
+                {/* Mobile status pill */}
+                <div className="xl:hidden mb-4">
+                  <span className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg ${getStatusColor(req.status)}`}>
+                    {req.status || "PENDING"}
+                  </span>
+                </div>
+                  
+                {(req.status?.toUpperCase() === "PENDING" || !req.status) && (
+                  <>
+                    <button className="w-full py-3.5 bg-[#0b0f19] text-white rounded-xl font-bold hover:bg-slate-800 transition-colors shadow-md">
+                      Approve
                     </button>
-                    <button className="px-4 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition-colors flex items-center justify-center">
-                      <MoreHorizontal size={18} />
+                    <div className="flex gap-3 text-sm">
+                      <button className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition-colors">
+                        Reject
+                      </button>
+                      <button className="px-4 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition-colors flex items-center justify-center">
+                        <MoreHorizontal size={18} />
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {req.status?.toUpperCase() === "APPROVED" && (
+                  <div className="mt-auto">
+                    <button className="w-full py-3.5 bg-white border-2 border-slate-900 text-slate-900 rounded-xl font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-2">
+                      <Eye size={18} />
+                      View Lease
                     </button>
                   </div>
-                </>
-              )}
+                )}
 
-              {req.status === "APPROVED" && (
-                <div className="mt-auto">
-                  <button className="w-full py-3.5 bg-white border-2 border-slate-900 text-slate-900 rounded-xl font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-2">
-                    <Eye size={18} />
-                    View Lease
-                  </button>
-                </div>
-              )}
-
-              {req.status === "NEW REQUEST" && (
-                <>
-                  <button className="w-full py-3.5 bg-[#0b0f19] text-white rounded-xl font-bold hover:bg-slate-800 transition-colors shadow-md">
-                    Review Now
-                  </button>
-                  <button className="w-full py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition-colors text-sm">
-                    Archive
-                  </button>
-                </>
-              )}
+                {req.status?.toUpperCase() === "COMPLETED" && (
+                  <>
+                    <button className="w-full py-3.5 bg-[#333b4d] text-white rounded-xl font-bold hover:bg-[#1a1f2b] transition-colors shadow-sm">
+                      View Record
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Stats Bottom Cards */}
@@ -255,8 +265,8 @@ export default function BookingRequestsPage() {
             <Hourglass className="text-slate-900" size={24} />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Average Response</p>
-            <p className="text-3xl font-bold text-slate-900 tracking-tight">4.2 Hours</p>
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Pending Requests</p>
+            <p className="text-3xl font-bold text-slate-900 tracking-tight">{pendingCount}</p>
           </div>
         </div>
 
@@ -266,8 +276,8 @@ export default function BookingRequestsPage() {
             <CheckCircle2 className="text-slate-900" size={24} />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Approval Rate</p>
-            <p className="text-3xl font-bold text-slate-900 tracking-tight">87%</p>
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Approved</p>
+            <p className="text-3xl font-bold text-slate-900 tracking-tight">{approvedCount}</p>
           </div>
         </div>
 
@@ -277,9 +287,9 @@ export default function BookingRequestsPage() {
             <TrendingUp className="text-blue-400" size={24} />
           </div>
           <div className="relative z-10">
-            <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-1">Projected Revenue</p>
+            <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-1">Total Revenue</p>
             <p className="text-3xl font-bold tracking-tight">
-              $142.8k <span className="text-base font-medium text-slate-400">/ yr</span>
+              ${totalRevenue.toLocaleString()} <span className="text-base font-medium text-slate-400">/ bookings</span>
             </p>
           </div>
           {/* Decorative glow */}
