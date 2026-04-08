@@ -15,6 +15,7 @@ export default function BookingRequestsPage() {
   const [activeTab, setActiveTab] = useState("All Requests");
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<Record<number, boolean>>({});
 
   const tabs = ["All Requests", "Pending", "Approved", "Rejected", "Completed"];
 
@@ -76,6 +77,34 @@ export default function BookingRequestsPage() {
     };
     fetchBookings();
   }, []);
+
+  // Update booking status via PATCH and immediately update local state
+  const updateStatus = async (bookingId: number, newStatus: string) => {
+    setActionLoading(prev => ({ ...prev, [bookingId]: true }));
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(
+        `http://localhost:8080/api/bookings/${bookingId}/status?status=${newStatus}`,
+        {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${token}` }
+        }
+      );
+      if (res.ok) {
+        // Instantly update the booking status in local state — no page reload needed
+        setRequests(prev =>
+          prev.map(r => r.id === bookingId ? { ...r, status: newStatus.toUpperCase() } : r)
+        );
+      } else {
+        alert("Failed to update booking status.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error updating status.");
+    } finally {
+      setActionLoading(prev => ({ ...prev, [bookingId]: false }));
+    }
+  };
 
   const getStatusColor = (status: string) => {
     const s = (status || "").toUpperCase();
@@ -217,38 +246,74 @@ export default function BookingRequestsPage() {
                     {req.status || "PENDING"}
                   </span>
                 </div>
-                  
+
+                {/* PENDING actions */}
                 {(req.status?.toUpperCase() === "PENDING" || !req.status) && (
                   <>
-                    <button className="w-full py-3.5 bg-[#0b0f19] text-white rounded-xl font-bold hover:bg-slate-800 transition-colors shadow-md">
-                      Approve
+                    <button
+                      disabled={actionLoading[req.id]}
+                      onClick={() => updateStatus(req.id, "APPROVED")}
+                      className="w-full py-3.5 bg-[#0b0f19] text-white rounded-xl font-bold hover:bg-slate-800 transition-colors shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {actionLoading[req.id] ? "Updating..." : "Approve"}
                     </button>
                     <div className="flex gap-3 text-sm">
-                      <button className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition-colors">
+                      <button
+                        disabled={actionLoading[req.id]}
+                        onClick={() => updateStatus(req.id, "REJECTED")}
+                        className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
                         Reject
                       </button>
-                      <button className="px-4 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition-colors flex items-center justify-center">
+                      <button
+                        disabled={actionLoading[req.id]}
+                        onClick={() => updateStatus(req.id, "COMPLETED")}
+                        className="px-4 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition-colors flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+                        title="Mark as Completed"
+                      >
                         <MoreHorizontal size={18} />
                       </button>
                     </div>
                   </>
                 )}
 
+                {/* APPROVED actions */}
                 {req.status?.toUpperCase() === "APPROVED" && (
-                  <div className="mt-auto">
+                  <div className="flex flex-col gap-3 mt-auto">
                     <button className="w-full py-3.5 bg-white border-2 border-slate-900 text-slate-900 rounded-xl font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-2">
                       <Eye size={18} />
                       View Lease
                     </button>
+                    <button
+                      disabled={actionLoading[req.id]}
+                      onClick={() => updateStatus(req.id, "COMPLETED")}
+                      className="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {actionLoading[req.id] ? "Updating..." : "Mark as Completed"}
+                    </button>
                   </div>
                 )}
 
+                {/* REJECTED actions */}
+                {req.status?.toUpperCase() === "REJECTED" && (
+                  <div className="flex flex-col gap-3 mt-auto">
+                    <button
+                      disabled={actionLoading[req.id]}
+                      onClick={() => updateStatus(req.id, "APPROVED")}
+                      className="w-full py-3.5 bg-[#0b0f19] text-white rounded-xl font-bold hover:bg-slate-800 transition-colors shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {actionLoading[req.id] ? "Updating..." : "Re-Approve"}
+                    </button>
+                  </div>
+                )}
+
+                {/* COMPLETED actions */}
                 {req.status?.toUpperCase() === "COMPLETED" && (
-                  <>
+                  <div className="mt-auto">
                     <button className="w-full py-3.5 bg-[#333b4d] text-white rounded-xl font-bold hover:bg-[#1a1f2b] transition-colors shadow-sm">
                       View Record
                     </button>
-                  </>
+                  </div>
                 )}
               </div>
             </div>

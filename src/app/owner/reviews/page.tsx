@@ -1,71 +1,118 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Building2, 
   Star, 
   MessageSquare,
   ChevronDown,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Send
 } from "lucide-react";
 
 export default function ReviewsPage() {
-  const reviews = [
-    {
-      id: 1,
-      name: "Sarah Jenkins",
-      avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&q=80",
-      property: "Azure Sky Penthouse",
-      date: "October 12, 2023",
-      rating: 5,
-      content: "An absolutely stunning property with breathtaking views. The host was very responsive and professional. Every detail in the Azure Sky Penthouse was thoughtfully curated. We'll definitely be returning for our next corporate retreat.",
-      reply: null
-    },
-    {
-      id: 2,
-      name: "Marcus Thorne",
-      avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&q=80",
-      property: "The Gilded Villa",
-      date: "September 28, 2023",
-      rating: 4,
-      content: "The architecture of the Gilded Villa is unparalleled. We were impressed by the seamless integration of smart home features. Minor delay with the concierge check-in, but the property quality more than made up for it. Exceptionally clean.",
-      reply: null
-    },
-    {
-      id: 3,
-      name: "Elena Rodriguez",
-      avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&q=80",
-      property: "Harbor Light Suite",
-      date: "August 15, 2023",
-      rating: 5,
-      content: "Exceeded all expectations. The morning light in the Harbor Suite is a photographer's dream. Julian and his team provide a level of service that rivals 5-star hotels. Highly recommend for anyone looking for true luxury.",
-      reply: "Thank you Elena, we loved having you!"
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [ownerProperties, setOwnerProperties] = useState<any[]>([]);
+  const [filterProperty, setFilterProperty] = useState("All Properties");
+  const [filterRating, setFilterRating] = useState("All Ratings");
+  const [replyText, setReplyText] = useState<Record<number, string>>({});
+  const [replyOpen, setReplyOpen] = useState<number | null>(null);
+  const [replySubmitting, setReplySubmitting] = useState<number | null>(null);
+
+  useEffect(() => {
+    const ownerId = localStorage.getItem("userId");
+    const token = localStorage.getItem("token");
+    if (!ownerId) return;
+
+    const load = async () => {
+      try {
+        // 1. Owner properties (for filter dropdown)
+        const pRes = await fetch(`http://localhost:8080/api/properties/owner/${ownerId}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (pRes.ok) {
+          const props = await pRes.json();
+          setOwnerProperties(props);
+        }
+
+        // 2. All reviews for this owner's properties
+        const rRes = await fetch(`http://localhost:8080/api/reviews/owner/${ownerId}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (rRes.ok) {
+          setReviews(await rRes.json());
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  const handleReply = async (reviewId: number) => {
+    const text = replyText[reviewId]?.trim();
+    if (!text) return;
+    setReplySubmitting(reviewId);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:8080/api/reviews/${reviewId}/reply`, {
+        method: "PATCH",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ reply: text })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setReviews(prev => prev.map(r => r.id === reviewId ? updated : r));
+        setReplyOpen(null);
+        setReplyText(prev => ({ ...prev, [reviewId]: "" }));
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setReplySubmitting(null);
     }
-  ];
-
-  const ratingDistribution = [
-    { stars: 5, percentage: 82, fillClass: "bg-[#0f172a] w-[82%]" },
-    { stars: 4, percentage: 12, fillClass: "bg-[#0f172a] w-[12%]" },
-    { stars: 3, percentage: 4, fillClass: "bg-slate-300 w-[4%]" },
-    { stars: 2, percentage: 1, fillClass: "bg-slate-300 w-[1%]" },
-    { stars: 1, percentage: 1, fillClass: "bg-slate-300 w-[1%]" }
-  ];
-
-  // Helper function to render stars
-  const renderStars = (rating: number) => {
-    return (
-      <div className="flex items-center gap-1">
-        {[...Array(5)].map((_, i) => (
-          <Star 
-            key={i} 
-            size={14} 
-            className={i < rating ? "fill-yellow-400 text-yellow-400" : "fill-slate-100 text-slate-200"} 
-          />
-        ))}
-      </div>
-    );
   };
+
+  // Filtered list
+  const filteredReviews = reviews.filter(r => {
+    if (filterProperty !== "All Properties" && r.propertyName !== filterProperty) return false;
+    if (filterRating !== "All Ratings") {
+      const stars = parseInt(filterRating);
+      if (r.rating !== stars) return false;
+    }
+    return true;
+  });
+
+  // Stats
+  const totalReviews = reviews.length;
+  const avgRating = totalReviews > 0
+    ? (reviews.reduce((s, r) => s + (r.rating || 0), 0) / totalReviews).toFixed(1)
+    : "0.0";
+
+  const ratingDistribution = [5, 4, 3, 2, 1].map(stars => {
+    const count = reviews.filter(r => r.rating === stars).length;
+    const percentage = totalReviews > 0 ? Math.round((count / totalReviews) * 100) : 0;
+    return { stars, percentage };
+  });
+
+  const renderStars = (rating: number) => (
+    <div className="flex items-center gap-1">
+      {[...Array(5)].map((_, i) => (
+        <Star
+          key={i}
+          size={14}
+          className={i < rating ? "fill-yellow-400 text-yellow-400" : "fill-slate-100 text-slate-200"}
+        />
+      ))}
+    </div>
+  );
 
   return (
     <div className="max-w-[1200px] mx-auto p-8 font-sans pb-24">
@@ -83,16 +130,13 @@ export default function ReviewsPage() {
         {/* Overall Score */}
         <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center">
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Overall Score</p>
-          <div className="text-6xl font-black text-slate-900 mb-4 tracking-tighter">4.8</div>
+          <div className="text-6xl font-black text-slate-900 mb-4 tracking-tighter">{avgRating}</div>
           <div className="flex items-center gap-1.5 mb-4">
-            <Star size={24} className="fill-yellow-400 text-yellow-400" />
-            <Star size={24} className="fill-yellow-400 text-yellow-400" />
-            <Star size={24} className="fill-yellow-400 text-yellow-400" />
-            <Star size={24} className="fill-yellow-400 text-yellow-400" />
-            <Star size={24} className="fill-yellow-400 text-yellow-400" />
-            {/* Keeping it simple with 5 full stars, a half star would need custom SVG or masked star */}
+            {[...Array(5)].map((_, i) => (
+              <Star key={i} size={24} className={i < Math.round(parseFloat(avgRating)) ? "fill-yellow-400 text-yellow-400" : "fill-slate-200 text-slate-200"} />
+            ))}
           </div>
-          <p className="text-sm font-medium text-slate-500">Based on 156 total reviews</p>
+          <p className="text-sm font-medium text-slate-500">Based on {totalReviews} total review{totalReviews !== 1 ? "s" : ""}</p>
         </div>
 
         {/* Rating Distribution */}
@@ -105,7 +149,10 @@ export default function ReviewsPage() {
                   {row.stars} Star
                 </div>
                 <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full ${row.fillClass}`}></div>
+                  <div
+                    className="h-full rounded-full bg-[#0f172a] transition-all duration-500"
+                    style={{ width: `${row.percentage}%` }}
+                  ></div>
                 </div>
                 <div className="w-10 text-right text-sm font-bold text-slate-900 shrink-0">
                   {row.percentage}%
@@ -121,10 +168,15 @@ export default function ReviewsPage() {
         <label className="flex flex-col gap-2">
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Filter by property</span>
           <div className="relative">
-            <select className="appearance-none bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl pl-4 pr-10 py-3 w-64 focus:outline-none focus:ring-2 focus:ring-slate-200 shadow-sm cursor-pointer">
+            <select
+              value={filterProperty}
+              onChange={e => setFilterProperty(e.target.value)}
+              className="appearance-none bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl pl-4 pr-10 py-3 w-64 focus:outline-none focus:ring-2 focus:ring-slate-200 shadow-sm cursor-pointer"
+            >
               <option>All Properties</option>
-              <option>Azure Sky Penthouse</option>
-              <option>The Gilded Villa</option>
+              {ownerProperties.map(p => (
+                <option key={p.id}>{p.title}</option>
+              ))}
             </select>
             <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
@@ -133,82 +185,139 @@ export default function ReviewsPage() {
         <label className="flex flex-col gap-2">
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Rating level</span>
           <div className="relative">
-            <select className="appearance-none bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl pl-4 pr-10 py-3 w-48 focus:outline-none focus:ring-2 focus:ring-slate-200 shadow-sm cursor-pointer">
+            <select
+              value={filterRating}
+              onChange={e => setFilterRating(e.target.value)}
+              className="appearance-none bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl pl-4 pr-10 py-3 w-48 focus:outline-none focus:ring-2 focus:ring-slate-200 shadow-sm cursor-pointer"
+            >
               <option>All Ratings</option>
               <option>5 Stars</option>
               <option>4 Stars</option>
+              <option>3 Stars</option>
+              <option>2 Stars</option>
+              <option>1 Stars</option>
             </select>
             <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
         </label>
 
-        <button className="bg-[#0f172a] text-white px-8 py-3 rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors shadow-sm">
-          Apply Filters
-        </button>
+        <span className="text-sm font-semibold text-slate-400 pb-3">
+          {filteredReviews.length} review{filteredReviews.length !== 1 ? "s" : ""}
+        </span>
       </div>
 
       {/* Reviews List */}
       <div className="space-y-6 mb-12">
-        {reviews.map((review) => (
-          <div key={review.id} className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 transition-shadow hover:shadow-md">
-            
-            {/* Review Header */}
-            <div className="flex justify-between items-start mb-6">
-              <div className="flex items-center gap-4">
-                <img src={review.avatar} alt={review.name} className="w-12 h-12 rounded-full object-cover shadow-sm bg-slate-100" />
-                <div>
-                  <h3 className="font-bold text-slate-900 mb-1">{review.name}</h3>
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50/80 rounded-md border border-blue-100/50 w-fit">
-                    <Building2 size={12} className="text-blue-600" />
-                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">{review.property}</span>
+        {loading ? (
+          <p className="text-slate-400 text-center py-12 font-medium">Loading reviews...</p>
+        ) : filteredReviews.length === 0 ? (
+          <p className="text-slate-400 text-center py-12 font-medium">No reviews found.</p>
+        ) : (
+          filteredReviews.map((review) => (
+            <div key={review.id} className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 transition-shadow hover:shadow-md">
+              
+              {/* Review Header */}
+              <div className="flex justify-between items-start mb-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-xl font-bold text-slate-600 shadow-sm shrink-0">
+                    {(review.tenantName || "T").charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900 mb-1">{review.tenantName || `Tenant #${review.tenantId}`}</h3>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50/80 rounded-md border border-blue-100/50 w-fit">
+                      <Building2 size={12} className="text-blue-600" />
+                      <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">
+                        {review.propertyName || `Property #${review.propertyId}`}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-              
-              <div className="text-right">
-                <div className="flex justify-end mb-1.5">
-                  {renderStars(review.rating)}
+                
+                <div className="text-right">
+                  <div className="flex justify-end mb-1.5">
+                    {renderStars(review.rating)}
+                  </div>
+                  <p className="text-xs font-semibold text-slate-400">{review.reviewDate}</p>
                 </div>
-                <p className="text-xs font-semibold text-slate-400">{review.date}</p>
               </div>
-            </div>
 
-            {/* Review Body */}
-            <div className="pl-4 border-l-4 border-slate-200/60 mb-6">
-              <p className="text-slate-600 text-sm italic leading-relaxed font-medium">
-                "{review.content}"
-              </p>
-            </div>
-
-            {/* Owner Reply Block */}
-            {review.reply && (
-              <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 mb-6 flex gap-3 text-sm">
-                <div className="mt-0.5 text-slate-400">
-                  <MessageSquare size={16} />
-                </div>
-                <p className="text-slate-700 font-medium">
-                  <span className="font-bold text-slate-900 mr-1">You replied:</span>
-                  "{review.reply}"
+              {/* Review Body */}
+              <div className="pl-4 border-l-4 border-slate-200/60 mb-6">
+                <p className="text-slate-600 text-sm italic leading-relaxed font-medium">
+                  &quot;{review.content}&quot;
                 </p>
               </div>
-            )}
 
-            {/* Review Actions */}
-            <div className="flex items-center gap-4 text-xs font-bold mt-2">
-              <button className="text-slate-900 hover:text-blue-600 transition-colors">
-                Reply to {review.name.split(" ")[0]}
-              </button>
-              <div className="w-px h-3 bg-slate-300"></div>
-              <button className="text-slate-500 hover:text-slate-900 transition-colors">
-                Flag Review
-              </button>
+              {/* Owner's existing reply */}
+              {review.ownerReply && (
+                <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 mb-6 flex gap-3 text-sm">
+                  <div className="mt-0.5 text-slate-400">
+                    <MessageSquare size={16} />
+                  </div>
+                  <p className="text-slate-700 font-medium">
+                    <span className="font-bold text-slate-900 mr-1">You replied:</span>
+                    &quot;{review.ownerReply}&quot;
+                  </p>
+                </div>
+              )}
+
+              {/* Reply input (toggle) */}
+              {replyOpen === review.id && (
+                <div className="mb-6 flex gap-3">
+                  <input
+                    type="text"
+                    value={replyText[review.id] || ""}
+                    onChange={e => setReplyText(prev => ({ ...prev, [review.id]: e.target.value }))}
+                    placeholder={`Reply to ${review.tenantName?.split(" ")[0] || "tenant"}...`}
+                    className="flex-1 px-4 py-2.5 bg-slate-100 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-slate-300 text-slate-900 placeholder:text-slate-400"
+                    onKeyDown={e => { if (e.key === "Enter") handleReply(review.id); }}
+                  />
+                  <button
+                    onClick={() => handleReply(review.id)}
+                    disabled={replySubmitting === review.id}
+                    className="px-4 py-2.5 bg-[#0b0f19] text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors flex items-center gap-2 disabled:opacity-60"
+                  >
+                    {replySubmitting === review.id ? "..." : <Send size={15} />}
+                  </button>
+                  <button
+                    onClick={() => setReplyOpen(null)}
+                    className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+
+              {/* Review Actions */}
+              <div className="flex items-center gap-4 text-xs font-bold mt-2">
+                {!review.ownerReply && (
+                  <button
+                    onClick={() => setReplyOpen(replyOpen === review.id ? null : review.id)}
+                    className="text-slate-900 hover:text-blue-600 transition-colors"
+                  >
+                    {replyOpen === review.id ? "Cancel Reply" : `Reply to ${review.tenantName?.split(" ")[0] || "Tenant"}`}
+                  </button>
+                )}
+                {review.ownerReply && (
+                  <button
+                    onClick={() => setReplyOpen(review.id)}
+                    className="text-slate-500 hover:text-slate-900 transition-colors"
+                  >
+                    Edit Reply
+                  </button>
+                )}
+                <div className="w-px h-3 bg-slate-300"></div>
+                <button className="text-slate-500 hover:text-slate-900 transition-colors">
+                  Flag Review
+                </button>
+              </div>
+
             </div>
-
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
-      {/* Pagination */}
+      {/* Pagination (static structure preserved) */}
       <div className="flex items-center justify-center gap-2 pb-8">
         <button className="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors">
           <ChevronLeft size={16} />
@@ -218,15 +327,6 @@ export default function ReviewsPage() {
         </button>
         <button className="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors">
           2
-        </button>
-        <button className="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors">
-          3
-        </button>
-        <div className="w-6 flex items-center justify-center text-slate-400 font-bold tracking-widest leading-none">
-          ...
-        </div>
-        <button className="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors">
-          12
         </button>
         <button className="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors">
           <ChevronRight size={16} />

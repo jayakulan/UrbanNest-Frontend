@@ -272,16 +272,29 @@ export default function TenantPropertyDetailsPage({ params }: { params: Promise<
                 <span className="text-xl font-bold text-slate-900">${((property.monthlyRent || 0) + 420 + 350).toLocaleString()}</span>
               </div>
 
-              <Link 
-                href={`/tenant/properties/${id}/book`}
-                className="w-full py-4 bg-[#0b0f19] text-white rounded-xl text-base font-bold shadow-md hover:bg-slate-800 transition-colors mb-4 flex items-center justify-center cursor-pointer"
-              >
-                Request to Book
-              </Link>
-              
-              <p className="text-center text-xs font-semibold text-slate-400 mb-8">
-                You won't be charged yet
-              </p>
+              {property.availabilityStatus?.toUpperCase() === "RENTED" ? (
+                <>
+                  <div className="w-full py-4 bg-slate-100 border-2 border-slate-200 text-slate-500 rounded-xl text-base font-bold mb-4 flex items-center justify-center gap-2 cursor-not-allowed select-none">
+                    <span className="w-2 h-2 rounded-full bg-red-400 inline-block"></span>
+                    Currently Rented — Not Available
+                  </div>
+                  <p className="text-center text-xs font-semibold text-slate-400 mb-8">
+                    This property has been booked by another tenant
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Link
+                    href={`/tenant/properties/${id}/book`}
+                    className="w-full py-4 bg-[#0b0f19] text-white rounded-xl text-base font-bold shadow-md hover:bg-slate-800 transition-colors mb-4 flex items-center justify-center cursor-pointer"
+                  >
+                    Request to Book
+                  </Link>
+                  <p className="text-center text-xs font-semibold text-slate-400 mb-8">
+                    You won't be charged yet
+                  </p>
+                </>
+              )}
 
               {/* Trust Badge */}
               <div className="flex items-center gap-3 justify-center text-slate-600 bg-slate-50 py-3 rounded-lg border border-slate-100">
