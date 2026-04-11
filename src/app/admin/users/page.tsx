@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Download, 
   UserPlus, 
@@ -13,65 +13,63 @@ import {
   ChevronLeft, 
   ChevronRight,
   Shield,
-  MoreVertical
+  Search,
+  Trash2
 } from "lucide-react";
 import Link from "next/link";
+
+const PAGE_SIZE = 10;
 
 export default function AdminUsersPage() {
   const [activeRole, setActiveRole] = useState("All");
   const [activeStatus, setActiveStatus] = useState("Any");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  const users = [
-    {
-      id: 1,
-      name: "Marcus Chen",
-      email: "marcus.c@urbanest.com",
-      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&q=80",
-      role: "ADMIN",
-      phone: "+1 (555) 234-8901",
-      status: "Active"
-    },
-    {
-      id: 2,
-      name: "Sarah Jenkins",
-      email: "s.jenkins@gmail.com",
-      avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&q=80",
-      role: "OWNER",
-      phone: "+1 (555) 912-4432",
-      status: "Active"
-    },
-    {
-      id: 3,
-      name: "Elena Rodriguez",
-      email: "elena.rod@icloud.com",
-      avatar: null,
-      initials: "EL",
-      role: "TENANT",
-      phone: "+1 (555) 722-0019",
-      status: "Pending"
-    },
-    {
-      id: 4,
-      name: "David Miller",
-      email: "miller.prop@outlook.com",
-      avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&q=80",
-      role: "TENANT",
-      phone: "+1 (555) 434-5512",
-      status: "Disabled"
-    },
-    {
-      id: 5,
-      name: "Sophia Bloom",
-      email: "sophia.bloom@urbanest.com",
-      avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&q=80",
-      role: "OWNER",
-      phone: "+1 (555) 881-2209",
-      status: "Active"
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch("http://localhost:8080/api/users", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.ok) setUsers(await res.json());
+      } catch (err) {
+        console.error("Failed to fetch users", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUsers();
+  }, []);
+
+  const handleDelete = async (userId: number) => {
+    if (!confirm("Are you sure you want to delete this user? This action cannot be undone.")) return;
+    setDeletingId(userId);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`http://localhost:8080/api/users/${userId}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setUsers(prev => prev.filter(u => u.id !== userId));
+      } else {
+        alert("Failed to delete user.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error deleting user.");
+    } finally {
+      setDeletingId(null);
     }
-  ];
+  };
 
   const getRoleStyle = (role: string) => {
-    switch(role) {
+    switch((role || "").toUpperCase()) {
       case "ADMIN": return "bg-blue-100 text-blue-700 font-bold";
       case "OWNER": return "bg-indigo-100/70 text-indigo-700 font-bold";
       case "TENANT": return "bg-slate-100 text-slate-600 font-bold";
@@ -84,18 +82,45 @@ export default function AdminUsersPage() {
       case "Active": return "bg-green-50 text-green-600";
       case "Pending": return "bg-orange-50 text-orange-600";
       case "Disabled": return "bg-slate-100 text-slate-500";
-      default: return "bg-slate-100 text-slate-600";
+      default: return "bg-green-50 text-green-600";
     }
   };
 
   const getStatusDot = (status: string) => {
     switch(status) {
-      case "Active": return "bg-green-500";
       case "Pending": return "bg-orange-500";
       case "Disabled": return "bg-slate-400";
-      default: return "bg-slate-400";
+      default: return "bg-green-500";
     }
   };
+
+  // Filter + search
+  const filtered = users.filter(u => {
+    if (activeRole !== "All" && (u.role || "").toUpperCase() !== activeRole.toUpperCase()) return false;
+    if (activeStatus !== "Any") {
+      const s = u.status || "Active";
+      if (s !== activeStatus) return false;
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      if (
+        !(u.fullName || "").toLowerCase().includes(q) &&
+        !(u.email || "").toLowerCase().includes(q) &&
+        !(u.phoneNo || "").toLowerCase().includes(q)
+      ) return false;
+    }
+    return true;
+  });
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  // Stats
+  const totalUsers = users.length;
+  const activeTenants = users.filter(u => (u.role || "").toUpperCase() === "TENANT").length;
+  const propertyOwners = users.filter(u => (u.role || "").toUpperCase() === "OWNER").length;
+  const pendingUsers = users.filter(u => (u.status || "") === "Pending").length;
 
   return (
     <div className="max-w-[1200px] mx-auto px-6 lg:px-12 py-8 font-sans pb-32">
@@ -121,67 +146,61 @@ export default function AdminUsersPage() {
       {/* Top Value Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
         
-        {/* Total Users */}
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col justify-between">
           <div className="flex justify-between items-start mb-4">
             <div>
               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Total Users</p>
-              <h2 className="text-3xl font-black text-slate-900 tracking-tight">2,841</h2>
+              <h2 className="text-3xl font-black text-slate-900 tracking-tight">{totalUsers}</h2>
             </div>
             <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-700 shrink-0">
               <Users size={18} />
             </div>
           </div>
           <p className="text-[10px] font-bold text-green-600 flex items-center gap-1">
-            <TrendingUp size={12} /> 12% increase this month
+            <TrendingUp size={12} /> Live from database
           </p>
         </div>
 
-        {/* Active Tenants */}
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col justify-between">
           <div className="flex justify-between items-start mb-4">
             <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Active Tenants</p>
-              <h2 className="text-3xl font-black text-slate-900 tracking-tight">1,420</h2>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Tenants</p>
+              <h2 className="text-3xl font-black text-slate-900 tracking-tight">{activeTenants}</h2>
             </div>
             <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-700 shrink-0">
               <Key size={18} />
             </div>
           </div>
-          <p className="text-[10px] font-bold text-slate-400">
-            98% occupancy rate
-          </p>
+          <p className="text-[10px] font-bold text-slate-400">Registered tenants</p>
         </div>
 
-        {/* Property Owners */}
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col justify-between">
           <div className="flex justify-between items-start mb-4">
             <div>
               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Property Owners</p>
-              <h2 className="text-3xl font-black text-slate-900 tracking-tight">642</h2>
+              <h2 className="text-3xl font-black text-slate-900 tracking-tight">{propertyOwners}</h2>
             </div>
             <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center text-orange-700 shrink-0">
               <Home size={18} />
             </div>
           </div>
           <p className="text-[10px] font-bold text-green-600 flex items-center gap-1">
-            <TrendingUp size={12} /> 5 new joined today
+            <TrendingUp size={12} /> Active owners
           </p>
         </div>
 
-        {/* Pending Verification */}
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col justify-between">
           <div className="flex justify-between items-start mb-4">
             <div>
               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Pending Verification</p>
-              <h2 className="text-3xl font-black text-slate-900 tracking-tight">28</h2>
+              <h2 className="text-3xl font-black text-slate-900 tracking-tight">{pendingUsers}</h2>
             </div>
             <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-red-600 shrink-0">
               <ShieldAlert size={18} />
             </div>
           </div>
           <p className="text-[10px] font-bold text-red-600">
-            Requires action soon
+            {pendingUsers > 0 ? "Requires action soon" : "All verified"}
           </p>
         </div>
 
@@ -194,13 +213,25 @@ export default function AdminUsersPage() {
         <div className="p-6 border-b border-slate-100 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
           
           <div className="flex flex-wrap items-center gap-6">
+            {/* Search */}
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                placeholder="Search name, email..."
+                className="pl-9 pr-4 py-2 bg-slate-100 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-slate-300 text-slate-900 placeholder:text-slate-400 w-52"
+              />
+            </div>
+
             <div className="flex items-center gap-3 text-sm font-bold text-slate-900">
               <span>Role:</span>
               <div className="bg-slate-100 p-1 rounded-xl flex items-center">
                 {['All', 'Admin', 'Owner', 'Tenant'].map(role => (
                   <button 
                     key={role}
-                    onClick={() => setActiveRole(role)}
+                    onClick={() => { setActiveRole(role); setCurrentPage(1); }}
                     className={`px-4 py-1.5 rounded-lg text-xs transition-colors ${activeRole === role ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     {role}
@@ -215,7 +246,7 @@ export default function AdminUsersPage() {
                 {['Any', 'Active', 'Pending'].map(status => (
                   <button 
                     key={status}
-                    onClick={() => setActiveStatus(status)}
+                    onClick={() => { setActiveStatus(status); setCurrentPage(1); }}
                     className={`px-4 py-1.5 rounded-lg text-xs transition-colors ${activeStatus === status ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     {status}
@@ -244,73 +275,95 @@ export default function AdminUsersPage() {
 
         {/* Table Rows */}
         <div className="divide-y divide-slate-100">
-          {users.map((user) => (
-            <div key={user.id} className="grid grid-cols-12 gap-4 px-8 py-5 items-center hover:bg-slate-50 transition-colors">
-              
-              {/* Name col */}
-              <div className="col-span-4 flex items-center gap-4">
-                {user.avatar ? (
-                  <img src={user.avatar} alt={user.name} className="w-10 h-10 rounded-full object-cover bg-slate-200" />
-                ) : (
-                  <div className="w-10 h-10 rounded-full bg-orange-100 text-orange-700 font-bold flex items-center justify-center text-sm">
-                    {user.initials}
+          {loading ? (
+            <div className="px-8 py-10 text-center text-sm font-medium text-slate-400">Loading users...</div>
+          ) : paginated.length === 0 ? (
+            <div className="px-8 py-10 text-center text-sm font-medium text-slate-400">No users found.</div>
+          ) : (
+            paginated.map((user) => (
+              <div key={user.id} className="grid grid-cols-12 gap-4 px-8 py-5 items-center hover:bg-slate-50 transition-colors">
+                
+                {/* Name col */}
+                <div className="col-span-4 flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-white font-bold flex items-center justify-center text-sm shrink-0">
+                    {(user.fullName || "U").charAt(0).toUpperCase()}
                   </div>
-                )}
-                <div className="min-w-0">
-                  <h4 className="text-sm font-bold text-slate-900 truncate">{user.name}</h4>
-                  <p className="text-[11px] font-medium text-slate-500 truncate">{user.email}</p>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-bold text-slate-900 truncate">{user.fullName || "—"}</h4>
+                    <p className="text-[11px] font-medium text-slate-500 truncate">{user.email}</p>
+                  </div>
                 </div>
-              </div>
 
-              {/* Role col */}
-              <div className="col-span-2">
-                <span className={`inline-block px-3 py-1 rounded-md text-[9px] uppercase tracking-wider ${getRoleStyle(user.role)}`}>
-                  {user.role}
-                </span>
-              </div>
+                {/* Role col */}
+                <div className="col-span-2">
+                  <span className={`inline-block px-3 py-1 rounded-md text-[9px] uppercase tracking-wider ${getRoleStyle(user.role)}`}>
+                    {user.role}
+                  </span>
+                </div>
 
-              {/* Phone col */}
-              <div className="col-span-3 text-sm font-bold text-slate-700">
-                {user.phone}
-              </div>
+                {/* Phone col */}
+                <div className="col-span-3 text-sm font-bold text-slate-700">
+                  {user.phoneNo || "—"}
+                </div>
 
-              {/* Status col */}
-              <div className="col-span-2 flex items-center">
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold ${getStatusStyle(user.status)}`}>
-                  <div className={`w-1.5 h-1.5 rounded-full ${getStatusDot(user.status)}`}></div>
-                  {user.status}
-                </span>
-              </div>
+                {/* Status col */}
+                <div className="col-span-2 flex items-center">
+                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold ${getStatusStyle(user.status || "Active")}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${getStatusDot(user.status || "Active")}`}></div>
+                    {user.status || "Active"}
+                  </span>
+                </div>
 
-              {/* Actions col */}
-              <div className="col-span-1 text-right">
-                <Link 
-                  href={`/admin/users/${user.id}`}
-                  className="inline-block px-4 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-[#0b0f19] hover:text-white transition-colors"
-                >
-                  View
-                </Link>
-              </div>
+                {/* Actions col */}
+                <div className="col-span-1 flex items-center justify-end gap-2">
+                  <Link 
+                    href={`/admin/users/${user.id}`}
+                    className="inline-block px-4 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-[#0b0f19] hover:text-white transition-colors"
+                  >
+                    View
+                  </Link>
+                  <button
+                    onClick={() => handleDelete(user.id)}
+                    disabled={deletingId === user.id}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors disabled:opacity-50"
+                    title="Delete user"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
 
-            </div>
-          ))}
+              </div>
+            ))
+          )}
         </div>
 
         {/* Pagination */}
         <div className="p-6 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
           <p className="text-xs font-bold text-slate-500">
-            Showing 1-10 of 2,841 users
+            Showing {filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)} of {filtered.length} users
           </p>
           <div className="flex items-center gap-2 text-xs font-bold">
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition-colors">
+            <button
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition-colors disabled:opacity-30"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
               <ChevronLeft size={16} />
             </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#0b0f19] text-white">1</button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100">2</button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100">3</button>
-            <span className="w-8 h-8 flex items-center justify-center text-slate-400">...</span>
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100">285</button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition-colors">
+            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => i + 1).map(page => (
+              <button
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                className={`w-8 h-8 flex items-center justify-center rounded-lg ${currentPage === page ? 'bg-[#0b0f19] text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition-colors disabled:opacity-30"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
               <ChevronRight size={16} />
             </button>
           </div>
@@ -329,8 +382,6 @@ export default function AdminUsersPage() {
             Run Security Scan
           </button>
         </div>
-
-        {/* Decorative Graphic Element */}
         <div className="absolute right-0 top-0 bottom-0 w-1/3 min-w-[300px] pointer-events-none opacity-10 flex items-center justify-center">
           <Shield size={200} className="text-white translate-x-12" />
         </div>
