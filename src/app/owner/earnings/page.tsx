@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Download, 
   Plus, 
@@ -13,81 +13,132 @@ import {
   Calendar,
   Filter,
   CreditCard,
-  Landmark,
-  Smartphone,
   ChevronLeft,
   ChevronRight,
   MoreHorizontal
 } from "lucide-react";
 
+const PAGE_SIZE = 10;
+
+interface Transaction {
+  bookingId: number;
+  propertyId: number;
+  propertyName: string;
+  propertyPhoto: string | null;
+  tenantName: string;
+  moveInDate: string;
+  monthlyRent: number;
+  totalAmount: number;
+  status: string;
+}
+
+function formatCurrency(n: number | null | undefined) {
+  if (!n) return "$0.00";
+  return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatDate(s: string | null | undefined) {
+  if (!s) return "—";
+  try {
+    return new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  } catch { return s; }
+}
+
+function statusStyle(status: string) {
+  const s = (status || "").toUpperCase();
+  if (s === "APPROVED" || s === "COMPLETED") return "bg-green-50 text-green-700 border-green-100";
+  if (s === "PENDING")  return "bg-orange-50 text-orange-700 border-orange-100";
+  if (s === "REJECTED") return "bg-red-50 text-red-700 border-red-100";
+  return "bg-slate-50 text-slate-600 border-slate-100";
+}
+
+function statusLabel(status: string) {
+  const s = (status || "").toUpperCase();
+  if (s === "APPROVED") return "COMPLETED";
+  return s || "PENDING";
+}
+
 export default function EarningsPage() {
   const [revenuePeriod, setRevenuePeriod] = useState("6 Months");
+  const [transactions, setTransactions]   = useState<Transaction[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [currentPage, setCurrentPage]     = useState(1);
+  const [ownerId, setOwnerId]             = useState<number>(0);
+  const [token, setToken]                 = useState<string>("");
 
-  const transactions = [
-    {
-      id: 1,
-      property: {
-        name: "Azure Sky Penthouse",
-        image: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=100&q=80"
-      },
-      tenant: "Sarah Jenkins",
-      date: "Oct 12, 2023",
-      amount: "$4,200.00",
-      method: "Credit Card",
-      methodIcon: <CreditCard size={14} className="text-slate-500" />,
-      status: "COMPLETED",
-      statusColor: "bg-green-50 text-green-700 border-green-100"
-    },
-    {
-      id: 2,
-      property: {
-        name: "Marble Arch Villa",
-        image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=100&q=80"
-      },
-      tenant: "Marcus Thorne",
-      date: "Oct 10, 2023",
-      amount: "$8,500.00",
-      method: "Bank Transfer",
-      methodIcon: <Landmark size={14} className="text-slate-500" />,
-      status: "PENDING",
-      statusColor: "bg-orange-50 text-orange-700 border-orange-100"
-    },
-    {
-      id: 3,
-      property: {
-        name: "Oak Ridge Manor",
-        image: "https://images.unsplash.com/photo-1600607687931-cece5ce21408?w=100&q=80"
-      },
-      tenant: "Elena Rodriguez",
-      date: "Oct 05, 2023",
-      amount: "$3,100.00",
-      method: "Credit Card",
-      methodIcon: <CreditCard size={14} className="text-slate-500" />,
-      status: "OVERDUE",
-      statusColor: "bg-red-50 text-red-700 border-red-100"
-    },
-    {
-      id: 4,
-      property: {
-        name: "Riverfront Estates",
-        image: "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=100&q=80"
-      },
-      tenant: "David Chen",
-      date: "Sep 28, 2023",
-      amount: "$6,200.00",
-      method: "Digital Wallet",
-      methodIcon: <Smartphone size={14} className="text-slate-500" />,
-      status: "COMPLETED",
-      statusColor: "bg-green-50 text-green-700 border-green-100"
-    }
-  ];
+  // Read localStorage client-side only
+  useEffect(() => {
+    setOwnerId(parseInt(localStorage.getItem("userId") || "0"));
+    setToken(localStorage.getItem("token") || "");
+  }, []);
+
+  // Fetch earnings once ownerId is ready
+  useEffect(() => {
+    if (!ownerId || !token) return;
+    const load = async () => {
+      try {
+        const res = await fetch(`http://localhost:8080/api/bookings/owner/${ownerId}/earnings`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.ok) setTransactions(await res.json());
+      } catch (err) { console.error(err); }
+      finally { setLoading(false); }
+    };
+    load();
+  }, [ownerId, token]);
+
+  // ── Computed stats ────────────────────────────────────────────────────────
+  const totalEarnings       = transactions.reduce((s, t) => s + (t.totalAmount || 0), 0);
+  const completedTx         = transactions.filter(t => ["APPROVED","COMPLETED"].includes((t.status||"").toUpperCase()));
+  const pendingTx           = transactions.filter(t => (t.status||"").toUpperCase() === "PENDING");
+  const pendingAmount        = pendingTx.reduce((s, t) => s + (t.monthlyRent || 0), 0);
+  const monthlyRevenue      = transactions.reduce((s, t) => s + (t.monthlyRent || 0), 0);
+
+  // Top performing property
+  const propRevMap: Record<string, number> = {};
+  transactions.forEach(t => {
+    propRevMap[t.propertyName] = (propRevMap[t.propertyName] || 0) + (t.totalAmount || 0);
+  });
+  const topProperty = Object.entries(propRevMap).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
+
+  // Chart bars — group monthly rent by property for bar heights
+  const barHeights = (() => {
+    const months = [...new Set(transactions.map(t => t.moveInDate?.slice(0, 7)).filter(Boolean))].slice(-6);
+    if (months.length === 0) return [20, 35, 30, 50, 45, 60];
+    const max = Math.max(...months.map(m =>
+      transactions.filter(t => t.moveInDate?.startsWith(m)).reduce((s, t) => s + (t.monthlyRent || 0), 0)
+    ));
+    return months.map(m => {
+      const val = transactions.filter(t => t.moveInDate?.startsWith(m)).reduce((s, t) => s + (t.monthlyRent || 0), 0);
+      return max > 0 ? Math.max(10, Math.round((val / max) * 90)) : 20;
+    });
+  })();
+
+  // Chart X-axis month labels
+  const chartMonths = (() => {
+    const months = [...new Set(transactions.map(t => t.moveInDate?.slice(0, 7)).filter(Boolean))].slice(-6);
+    if (months.length === 0) return ['JAN','FEB','MAR','APR','MAY','JUN'];
+    return months.map(m => {
+      const d = new Date(m + "-01");
+      return d.toLocaleString("en-US", { month: "short" }).toUpperCase();
+    });
+  })();
+
+  // Goal progress (total earned vs target of 2× total)
+  const target    = Math.max(totalEarnings * 1.2, 1);
+  const goalPct   = Math.min(100, Math.round((totalEarnings / target) * 100));
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(transactions.length / PAGE_SIZE));
+  const paginated  = transactions.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   return (
     <div className="max-w-[1400px] mx-auto p-8 font-sans pb-24">
+      
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
         <div>
-          <h1 className="text-4xl font-bold text-slate-900 tracking-tight mb-2">Earnings & Payments</h1>
+          <h1 className="text-4xl font-bold text-slate-900 tracking-tight mb-2">Earnings &amp; Payments</h1>
           <p className="text-slate-500 font-medium">
             Track your luxury portfolio performance and financial health.
           </p>
@@ -106,39 +157,41 @@ export default function EarningsPage() {
 
       {/* Overview Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {/* Stat 1 */}
+        
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col hover:shadow-md transition-shadow">
           <div className="flex justify-between items-start mb-6">
             <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-700">
               <Wallet size={20} />
             </div>
             <span className="px-2.5 py-1 bg-green-50 text-green-700 text-[10px] font-bold tracking-wider rounded-md">
-              +12.5%
+              LIVE
             </span>
           </div>
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Total Earnings</p>
-            <h3 className="text-3xl font-bold text-slate-900 tracking-tight">$124,500.00</h3>
+            <h3 className="text-3xl font-bold text-slate-900 tracking-tight">
+              {loading ? "—" : formatCurrency(totalEarnings)}
+            </h3>
           </div>
         </div>
 
-        {/* Stat 2 */}
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col hover:shadow-md transition-shadow">
           <div className="flex justify-between items-start mb-6">
             <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-700">
               <BarChart3 size={20} />
             </div>
             <span className="px-2.5 py-1 bg-green-50 text-green-700 text-[10px] font-bold tracking-wider rounded-md">
-              +8.2%
+              LIVE
             </span>
           </div>
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Monthly Revenue</p>
-            <h3 className="text-3xl font-bold text-slate-900 tracking-tight">$12,400.00</h3>
+            <h3 className="text-3xl font-bold text-slate-900 tracking-tight">
+              {loading ? "—" : formatCurrency(monthlyRevenue)}
+            </h3>
           </div>
         </div>
 
-        {/* Stat 3 */}
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col hover:shadow-md transition-shadow">
           <div className="flex justify-between items-start mb-6">
             <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-700">
@@ -147,11 +200,12 @@ export default function EarningsPage() {
           </div>
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Pending Payments</p>
-            <h3 className="text-3xl font-bold text-slate-900 tracking-tight">$3,800.00</h3>
+            <h3 className="text-3xl font-bold text-slate-900 tracking-tight">
+              {loading ? "—" : formatCurrency(pendingAmount)}
+            </h3>
           </div>
         </div>
 
-        {/* Stat 4 */}
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col hover:shadow-md transition-shadow">
           <div className="flex justify-between items-start mb-6">
             <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-700">
@@ -160,9 +214,12 @@ export default function EarningsPage() {
           </div>
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Completed Transactions</p>
-            <h3 className="text-3xl font-bold text-slate-900 tracking-tight">156</h3>
+            <h3 className="text-3xl font-bold text-slate-900 tracking-tight">
+              {loading ? "—" : completedTx.length}
+            </h3>
           </div>
         </div>
+
       </div>
 
       {/* Middle Grids */}
@@ -189,16 +246,13 @@ export default function EarningsPage() {
           </div>
 
           <div className="flex-1 flex flex-col justify-end min-h-[250px] relative mt-4">
-            {/* Extremely simple pure css visual chart mockup for the visual empty state */}
             <div className="absolute inset-0 flex items-end justify-between px-4 pb-8">
-              {[30, 45, 40, 75, 60, 95].map((h, i) => (
-                <div key={i} className="w-[10%] bg-gradient-to-t from-blue-100/50 to-blue-50 relative rounded-t-sm" style={{height: `${h}%`}}></div>
+              {barHeights.map((h, i) => (
+                <div key={i} className="w-[10%] bg-gradient-to-t from-blue-100/50 to-blue-50 relative rounded-t-sm" style={{ height: `${h}%` }}></div>
               ))}
             </div>
-            
-            {/* X-axis tags */}
             <div className="flex justify-between px-8 border-t border-slate-100 pt-4 relative z-10 w-full mt-auto">
-              {['MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT'].map(m => (
+              {chartMonths.map(m => (
                 <span key={m} className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{m}</span>
               ))}
             </div>
@@ -210,17 +264,23 @@ export default function EarningsPage() {
           <div className="relative z-10">
             <h2 className="text-xl font-bold text-white mb-3">Earnings Goal</h2>
             <p className="text-sm font-medium text-slate-400 leading-relaxed max-w-[260px]">
-              You've reached 83% of your Q4 target. List one more property to exceed your goals.
+              {loading
+                ? "Loading your earnings data..."
+                : `You've reached ${goalPct}% of your target. ${goalPct < 100 ? "Keep growing your portfolio!" : "Target achieved! 🎉"}`
+              }
             </p>
           </div>
 
           <div className="mt-12 relative z-10">
             <div className="flex justify-between items-end mb-3">
-              <span className="text-sm font-bold text-white">Q4 Target</span>
-              <span className="text-xl font-bold text-white">$150,000</span>
+              <span className="text-sm font-bold text-white">Target</span>
+              <span className="text-xl font-bold text-white">{formatCurrency(target)}</span>
             </div>
             <div className="h-3 w-full bg-slate-800 rounded-full overflow-hidden shadow-inner mb-8">
-              <div className="h-full bg-white w-[83%] rounded-full shadow-[0_0_10px_rgba(255,255,255,0.5)]"></div>
+              <div
+                className="h-full bg-white rounded-full shadow-[0_0_10px_rgba(255,255,255,0.5)] transition-all duration-700"
+                style={{ width: `${goalPct}%` }}
+              ></div>
             </div>
 
             <div className="bg-white/5 border border-white/10 rounded-2xl p-5 flex items-center gap-4 backdrop-blur-md">
@@ -229,7 +289,7 @@ export default function EarningsPage() {
               </div>
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Top Performer</p>
-                <p className="text-sm font-bold text-white">Azure Sky Penthouse</p>
+                <p className="text-sm font-bold text-white truncate max-w-[140px]">{loading ? "—" : topProperty}</p>
               </div>
             </div>
           </div>
@@ -275,63 +335,107 @@ export default function EarningsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {transactions.map((tx) => (
-                <tr key={tx.id} className="hover:bg-slate-50/80 transition-colors group">
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-4">
-                      <img src={tx.property.image} alt={tx.property.name} className="w-10 h-10 rounded-lg object-cover shadow-sm border border-slate-100" />
-                      <span className="font-bold text-sm text-slate-900">{tx.property.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5 text-sm font-medium text-slate-600">
-                    <div className="w-24 whitespace-normal break-words leading-tight">{tx.tenant}</div>
-                  </td>
-                  <td className="px-6 py-5 text-sm font-medium text-slate-600">
-                    <div className="w-20 whitespace-normal break-words leading-tight">{tx.date}</div>
-                  </td>
-                  <td className="px-6 py-5 font-bold text-sm text-slate-900">
-                    {tx.amount}
-                  </td>
-                  <td className="px-6 py-5">
-                    <div className="flex item-center gap-2">
-                      <div className="mt-0.5">{tx.methodIcon}</div>
-                      <span className="text-sm font-medium text-slate-600 w-24 whitespace-normal leading-tight">{tx.method}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5">
-                    <span className={`inline-flex items-center px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${tx.statusColor}`}>
-                      {tx.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-5 text-right">
-                    <button className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-slate-400 hover:bg-white hover:shadow-sm hover:text-slate-900 border border-transparent hover:border-slate-200 transition-all">
-                      <MoreHorizontal size={16} />
-                    </button>
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-8 py-12 text-center text-sm font-medium text-slate-400">
+                    Loading transactions...
                   </td>
                 </tr>
-              ))}
+              ) : paginated.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-8 py-12 text-center text-sm font-medium text-slate-400">
+                    No transactions found.
+                  </td>
+                </tr>
+              ) : (
+                paginated.map((tx) => (
+                  <tr key={tx.bookingId} className="hover:bg-slate-50/80 transition-colors group">
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-4">
+                        {tx.propertyPhoto ? (
+                          <img
+                            src={tx.propertyPhoto}
+                            alt={tx.propertyName}
+                            className="w-10 h-10 rounded-lg object-cover shadow-sm border border-slate-100"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-slate-200 to-slate-300 shadow-sm border border-slate-100 flex items-center justify-center text-slate-500 text-xs font-bold">
+                            {(tx.propertyName || "P").charAt(0)}
+                          </div>
+                        )}
+                        <span className="font-bold text-sm text-slate-900">{tx.propertyName || "—"}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5 text-sm font-medium text-slate-600">
+                      <div className="w-24 whitespace-normal break-words leading-tight">
+                        {tx.tenantName || "—"}
+                      </div>
+                    </td>
+                    <td className="px-6 py-5 text-sm font-medium text-slate-600">
+                      <div className="w-20 whitespace-normal break-words leading-tight">
+                        {formatDate(tx.moveInDate)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-5 font-bold text-sm text-slate-900">
+                      {formatCurrency(tx.totalAmount || tx.monthlyRent)}
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-2">
+                        <CreditCard size={14} className="text-slate-500 mt-0.5" />
+                        <span className="text-sm font-medium text-slate-600 w-24 whitespace-normal leading-tight">
+                          Rental Payment
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5">
+                      <span className={`inline-flex items-center px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${statusStyle(tx.status)}`}>
+                        {statusLabel(tx.status)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-5 text-right">
+                      <button className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-slate-400 hover:bg-white hover:shadow-sm hover:text-slate-900 border border-transparent hover:border-slate-200 transition-all">
+                        <MoreHorizontal size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
 
         {/* Footer Pagination */}
         <div className="p-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-xs font-medium text-slate-500">Showing 1 to 10 of 156 transactions</p>
+          <p className="text-xs font-medium text-slate-500">
+            Showing {transactions.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, transactions.length)} of {transactions.length} transactions
+          </p>
           
           <div className="flex items-center gap-2">
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors disabled:opacity-30"
+            >
               <ChevronLeft size={16} />
             </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg border border-[#0b0f19] bg-[#0b0f19] text-white font-bold text-xs shadow-sm">
-              1
-            </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition-colors">
-              2
-            </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 transition-colors">
-              3
-            </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors">
+            {Array.from({ length: Math.min(totalPages, 3) }, (_, i) => i + 1).map(p => (
+              <button
+                key={p}
+                onClick={() => setCurrentPage(p)}
+                className={`w-8 h-8 flex items-center justify-center rounded-lg border font-bold text-xs transition-colors ${
+                  currentPage === p
+                    ? "border-[#0b0f19] bg-[#0b0f19] text-white shadow-sm"
+                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors disabled:opacity-30"
+            >
               <ChevronRight size={16} />
             </button>
           </div>
