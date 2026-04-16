@@ -1,12 +1,16 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   MapPin, 
   ChevronDown,
   RotateCcw,
   Heart,
-  Star
+  Star,
+  Bot,
+  X,
+  Send,
+  Sparkles
 } from "lucide-react";
 import Link from "next/link";
 
@@ -17,6 +21,157 @@ const AMENITY_OPTIONS = [
   { label: "Smart Home Tech", key: "smart" },
 ];
 
+// ── AI Chat Popup Component ─────────────────────────────────────────────────
+interface AiMsg {
+  role: "user" | "ai";
+  content: string;
+}
+
+function AiChatPopup({ onClose, token }: { onClose: () => void; token: string }) {
+  const [messages, setMessages] = useState<AiMsg[]>([
+    { role: "ai", content: "Hi! 👋 I'm UrbanNest AI. Ask me anything about available properties — location, price, bedrooms, amenities, and more!" }
+  ]);
+  const [input, setInput]       = useState("");
+  const [loading, setLoading]   = useState(false);
+  const endRef                  = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  const handleSend = async () => {
+    const text = input.trim();
+    if (!text || loading) return;
+    setInput("");
+    setMessages(prev => [...prev, { role: "user", content: text }]);
+    setLoading(true);
+
+    try {
+      const res = await fetch("http://localhost:8080/api/ai/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ message: text }),
+      });
+      const data = await res.json();
+      setMessages(prev => [...prev, { role: "ai", content: data.reply || "Sorry, I couldn't get a response." }]);
+    } catch {
+      setMessages(prev => [...prev, { role: "ai", content: "AI is temporarily unavailable. Please try again." }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const examples = [
+    "Find 2-bedroom house under $30,000",
+    "Available apartments in Colombo?",
+    "Which properties have a pool?",
+  ];
+
+  return (
+    <div className="fixed bottom-24 right-6 z-50 w-[360px] bg-white rounded-3xl shadow-2xl border border-slate-100 flex flex-col overflow-hidden"
+         style={{ maxHeight: "520px" }}>
+
+      {/* Header */}
+      <div className="bg-gradient-to-r from-[#0b0f19] to-slate-700 px-5 py-4 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">
+            <Bot size={20} className="text-white" />
+          </div>
+          <div>
+            <p className="text-white font-bold text-sm leading-none">UrbanNest AI</p>
+            <p className="text-white/60 text-[10px] font-medium mt-0.5">Smart Property Assistant</p>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors text-white"
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50" style={{ minHeight: 0 }}>
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} gap-2`}>
+            {msg.role === "ai" && (
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center shrink-0 mt-0.5">
+                <Bot size={14} className="text-white" />
+              </div>
+            )}
+            <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm font-medium leading-relaxed whitespace-pre-wrap ${
+              msg.role === "user"
+                ? "bg-[#0b0f19] text-white rounded-tr-sm"
+                : "bg-white text-slate-800 rounded-tl-sm border border-slate-100 shadow-sm"
+            }`}>
+              {msg.content}
+            </div>
+          </div>
+        ))}
+
+        {/* Typing indicator */}
+        {loading && (
+          <div className="flex justify-start gap-2">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center shrink-0">
+              <Bot size={14} className="text-white" />
+            </div>
+            <div className="bg-white border border-slate-100 shadow-sm px-4 py-3 rounded-2xl rounded-tl-sm flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+              <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+              <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+            </div>
+          </div>
+        )}
+
+        {/* Example prompts — show only at start */}
+        {messages.length === 1 && !loading && (
+          <div className="space-y-2 pt-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Try asking:</p>
+            {examples.map((ex, i) => (
+              <button
+                key={i}
+                onClick={() => { setInput(ex); }}
+                className="w-full text-left text-xs font-semibold text-slate-600 bg-white hover:bg-violet-50 hover:text-violet-700 border border-slate-100 rounded-xl px-3 py-2 transition-colors"
+              >
+                {ex}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div ref={endRef} />
+      </div>
+
+      {/* Input */}
+      <div className="p-3 border-t border-slate-100 bg-white shrink-0">
+        <div className="flex items-center gap-2 bg-slate-100 rounded-2xl px-3 py-2">
+          <input
+            type="text"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            placeholder="Ask about properties..."
+            className="flex-1 bg-transparent outline-none text-sm font-medium text-slate-900 placeholder:text-slate-400"
+            disabled={loading}
+          />
+          <button
+            onClick={handleSend}
+            disabled={!input.trim() || loading}
+            className="w-8 h-8 bg-[#0b0f19] text-white rounded-xl flex items-center justify-center hover:bg-slate-700 transition-colors disabled:opacity-40 shrink-0"
+          >
+            <Send size={14} />
+          </button>
+        </div>
+        <p className="text-center text-[9px] text-slate-400 font-medium mt-2">Powered by OpenAI • UrbanNest</p>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ───────────────────────────────────────────────────────────────
 export default function TenantPropertiesPage() {
   // ── Raw data from DB ──
   const [allProperties, setAllProperties] = useState<any[]>([]);
@@ -28,6 +183,14 @@ export default function TenantPropertiesPage() {
   const [maxRent, setMaxRent]               = useState(50000);
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
   const [sortBy, setSortBy]                 = useState("newest");
+
+  // ── AI popup ──
+  const [aiOpen, setAiOpen]   = useState(false);
+  const [token, setToken]     = useState("");
+
+  useEffect(() => {
+    setToken(localStorage.getItem("token") || "");
+  }, []);
 
   // Fetch once — filter out RENTED in the client
   useEffect(() => {
@@ -344,6 +507,31 @@ export default function TenantPropertiesPage() {
         </div>
 
       </div>
+
+      {/* ── Floating AI Chat Button ── */}
+      <button
+        onClick={() => setAiOpen(prev => !prev)}
+        className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-5 py-3.5 rounded-2xl shadow-2xl text-white font-bold text-sm transition-all duration-300 ${
+          aiOpen
+            ? "bg-slate-700 hover:bg-slate-600"
+            : "bg-gradient-to-r from-[#0b0f19] to-slate-700 hover:scale-105"
+        }`}
+      >
+        {aiOpen ? (
+          <>
+            <X size={18} />
+            Close AI
+          </>
+        ) : (
+          <>
+            <Sparkles size={18} className="text-yellow-300" />
+            Ask AI
+          </>
+        )}
+      </button>
+
+      {/* ── AI Chat Popup ── */}
+      {aiOpen && <AiChatPopup onClose={() => setAiOpen(false)} token={token} />}
     </div>
   );
 }

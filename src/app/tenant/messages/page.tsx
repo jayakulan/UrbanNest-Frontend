@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   SquarePen, 
   Phone, 
@@ -100,7 +100,7 @@ export default function TenantMessagesPage() {
   }, [currentUserId, token]);
 
   // ── Open a conversation (load history) ──
-  const openConversation = useCallback(async (conv: Conversation) => {
+  const openConversation = async (conv: Conversation) => {
     setActiveConv(conv);
     setLoadingHistory(true);
     try {
@@ -119,7 +119,7 @@ export default function TenantMessagesPage() {
       ));
     } catch (err) { console.error(err); }
     finally { setLoadingHistory(false); }
-  }, [token, currentUserId]);
+  };
 
   // ── Send a message ──
   const handleSend = () => {
